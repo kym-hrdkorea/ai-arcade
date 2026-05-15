@@ -76,6 +76,10 @@ type StoredRoomSession = {
   roomCode: string;
 };
 
+type DrawDuelLobbyProps = {
+  entryMode?: "full" | "join-only";
+};
+
 const realtimeUrl = process.env.NEXT_PUBLIC_REALTIME_URL ?? "http://localhost:4000";
 const reconnectStorageKey = "draw-duel:reconnect";
 
@@ -214,9 +218,10 @@ function friendlyErrorMessage(error: { code: string; message: string }) {
   return messages[error.code] ?? error.message;
 }
 
-export function DrawDuelLobby() {
+export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   const searchParams = useSearchParams();
   const initialRoomCode = normalizeRoomCode(searchParams.get("roomCode") ?? "");
+  const isJoinOnly = entryMode === "join-only";
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const currentPlayerIdRef = useRef<string | null>(null);
   const roundIdRef = useRef<string | null>(null);
@@ -262,7 +267,7 @@ export function DrawDuelLobby() {
       return;
     }
 
-    setJoinUrl(`${window.location.origin}/games/draw-duel?roomCode=${room.roomCode}`);
+    setJoinUrl(`${window.location.origin}/games/draw-duel/join?roomCode=${room.roomCode}`);
   }, [room]);
 
   useEffect(() => {
@@ -450,6 +455,8 @@ export function DrawDuelLobby() {
     [currentPlayerId, room],
   );
   const currentRound = roundState?.round ?? null;
+  const isPlayingView = Boolean(room?.status === "playing" && !gameResult);
+  const hasJoinRoomCode = joinRoomCode.length === 6;
   const isAIGuessing = currentRound?.status === "ai-guessing" && !roundResult;
   const resultHumanGuesses =
     roundResult?.guesses.filter((guess) => guess.source === "player") ?? [];
@@ -513,6 +520,10 @@ export function DrawDuelLobby() {
         : isHost
           ? "호스트 드로잉 권한이 있습니다."
           : "호스트가 그리고 있습니다.";
+  const mobileRoundLabel = currentRound
+    ? `${currentRound.roundNumber}/${currentRound.totalRounds}`
+    : "대기";
+  const mobileTimerLabel = remainingSeconds === null ? "--" : `${remainingSeconds}초`;
 
   useEffect(() => {
     if (!isHost) {
@@ -1102,9 +1113,9 @@ export function DrawDuelLobby() {
   }
 
   return (
-    <main className="min-h-screen bg-console-black text-screen-white">
-      <div className="screen-grid min-h-screen px-5 py-8">
-        <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col">
+    <main className="min-h-[100svh] bg-console-black text-screen-white">
+      <div className="screen-grid min-h-[100svh] px-3 py-3 sm:px-5 sm:py-8">
+        <div className="mx-auto flex min-h-[100svh] w-full max-w-6xl flex-col">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <Link className="arcade-button arcade-button-ghost w-fit" href="/">
               <ArrowLeft aria-hidden="true" size={18} />
@@ -1123,18 +1134,19 @@ export function DrawDuelLobby() {
           <section
             className={
               room
-                ? "grid flex-1 gap-6 py-8"
+                ? "grid flex-1 gap-3 py-3 sm:gap-6 sm:py-8"
                 : "grid flex-1 gap-6 py-8 lg:grid-cols-[0.95fr_1.05fr]"
             }
           >
-            <div>
+            <div className={isPlayingView ? "hidden sm:block" : undefined}>
               <p className="font-arcade text-sm text-electric-cyan">Draw Duel</p>
               <h1 className="mt-4 text-3xl font-black leading-tight sm:text-5xl">
-                방을 만들거나 코드로 참가하세요
+                {isJoinOnly ? "닉네임을 입력하고 참가하세요" : "방을 만들거나 코드로 참가하세요"}
               </h1>
               <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-gray">
-                QR로 빠르게 입장하고, 끊긴 참가자는 같은 브라우저에서 60초 안에
-                복구할 수 있습니다. AI 추측은 서버에서 안전하게 운영됩니다.
+                {isJoinOnly
+                  ? "이미 받은 방 코드로 입장합니다. 닉네임만 정하면 바로 참가할 수 있습니다."
+                  : "QR로 빠르게 입장하고, 끊긴 참가자는 같은 브라우저에서 60초 안에 복구할 수 있습니다. AI 추측은 서버에서 안전하게 운영됩니다."}
               </p>
 
               {errorMessage ? (
@@ -1151,14 +1163,20 @@ export function DrawDuelLobby() {
             </div>
 
             {room ? (
-              <section className="arcade-panel p-5 sm:p-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
+              <section
+                className={
+                  isPlayingView
+                    ? "grid gap-3 border border-line-gray bg-panel-gray/90 p-3 shadow-panel sm:p-6"
+                    : "arcade-panel p-5 sm:p-6"
+                }
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
                   <div>
                     <p className="font-arcade text-xs text-electric-cyan">Room Code</p>
-                    <h2 className="mt-2 font-arcade text-3xl text-coin-yellow sm:text-5xl">
+                    <h2 className="mt-1 font-arcade text-2xl text-coin-yellow sm:mt-2 sm:text-5xl">
                       {room.roomCode}
                     </h2>
-                    <p className="mt-3 text-sm text-muted-gray">
+                    <p className="mt-1 text-sm text-muted-gray sm:mt-3">
                       내 닉네임: <strong className="text-screen-white">{currentPlayer?.nickname}</strong>
                     </p>
                   </div>
@@ -1168,21 +1186,42 @@ export function DrawDuelLobby() {
                   </button>
                 </div>
 
+                {isPlayingView ? (
+                  <div className="grid grid-cols-3 gap-2 border border-line-gray bg-console-black p-2 text-center text-xs font-black sm:hidden">
+                    <div className="grid gap-1">
+                      <span className="text-muted-gray">라운드</span>
+                      <strong className="font-arcade text-coin-yellow">{mobileRoundLabel}</strong>
+                    </div>
+                    <div className="grid gap-1">
+                      <span className="text-muted-gray">시간</span>
+                      <strong className="font-arcade text-electric-cyan">{mobileTimerLabel}</strong>
+                    </div>
+                    <div className="grid gap-1">
+                      <span className="text-muted-gray">역할</span>
+                      <strong className={isDrawer ? "text-coin-yellow" : "text-health-green"}>
+                        {isDrawer ? "출제" : "정답"}
+                      </strong>
+                    </div>
+                  </div>
+                ) : null}
+
                 {gameResult ? (
                   <div className="mt-6">{renderFinalResult()}</div>
                 ) : (
                   <>
-                    {currentRound ? <div className="mt-6 lg:hidden">{renderRoundSummary()}</div> : null}
+                    {currentRound && !isPlayingView ? (
+                      <div className="mt-3 sm:mt-6 lg:hidden">{renderRoundSummary()}</div>
+                    ) : null}
 
-                    <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px]">
-                  <div className="grid content-start gap-4">
+                    <div className="mt-3 grid gap-3 sm:mt-6 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px]">
+                  <div className="grid content-start gap-3 sm:gap-4">
                     {roundResult ? (
                       renderResultSlide()
                     ) : (
                       <>
                         {isAIGuessing ? (
-                          <div className="grid min-h-28 place-items-center border-2 border-pixel-blue bg-console-black p-5 text-center">
-                            <p className="flex flex-wrap items-center justify-center gap-3 text-xl font-black text-screen-white">
+                          <div className="grid min-h-20 place-items-center border-2 border-pixel-blue bg-console-black p-4 text-center sm:min-h-28 sm:p-5">
+                            <p className="flex flex-wrap items-center justify-center gap-3 text-lg font-black text-screen-white sm:text-xl">
                               <Bot aria-hidden="true" className="text-electric-cyan" size={24} />
                               AI가 정답을 추측하고 있습니다
                             </p>
@@ -1193,6 +1232,7 @@ export function DrawDuelLobby() {
                           canDraw={canDraw}
                           currentPlayerId={currentPlayerId}
                           drawStatus={drawStatus}
+                          compact={isPlayingView}
                           initialStrokes={initialBoardStrokes}
                           room={room}
                           socket={activeSocket}
@@ -1201,8 +1241,36 @@ export function DrawDuelLobby() {
                     )}
                   </div>
 
-                  <aside className="grid content-start gap-6">
+                  <aside className="grid content-start gap-3 sm:gap-6">
                     {currentRound ? <div className="hidden lg:block">{renderRoundSummary()}</div> : null}
+
+                    {currentRound?.status === "drawing" && !isDrawer ? (
+                      <form
+                        className="sticky bottom-2 z-20 grid gap-2 border border-line-gray bg-console-black p-3 shadow-panel sm:static sm:gap-3 sm:p-4"
+                        onSubmit={submitGuess}
+                      >
+                        <h3 className="flex items-center gap-2 text-lg font-black sm:text-xl">
+                          <Send aria-hidden="true" className="text-health-green" size={22} />
+                          내 답변
+                        </h3>
+                        <input
+                          className="arcade-input"
+                          disabled={!canGuess}
+                          maxLength={40}
+                          onChange={(event) => setGuessText(event.target.value)}
+                          placeholder={hasSubmittedGuess ? "제출 완료" : "정답을 입력하세요"}
+                          value={guessText}
+                        />
+                        <button
+                          className="arcade-button arcade-button-secondary"
+                          disabled={!canGuess || !guessText.trim()}
+                          type="submit"
+                        >
+                          <Send aria-hidden="true" size={18} />
+                          {hasSubmittedGuess ? "제출 완료" : "제출"}
+                        </button>
+                      </form>
+                    ) : null}
 
                     {isHost ? (
                       <div className="grid gap-4 border border-coin-yellow bg-console-black p-4">
@@ -1500,34 +1568,63 @@ export function DrawDuelLobby() {
                       </div>
                     )}
 
-                    {currentRound?.status === "drawing" && !isDrawer ? (
-                      <form className="grid gap-3 border border-line-gray bg-console-black p-4" onSubmit={submitGuess}>
-                        <h3 className="flex items-center gap-2 text-xl font-black">
-                          <Send aria-hidden="true" className="text-health-green" size={22} />
-                          내 답변
-                        </h3>
-                        <input
-                          className="arcade-input"
-                          disabled={!canGuess}
-                          maxLength={40}
-                          onChange={(event) => setGuessText(event.target.value)}
-                          placeholder={hasSubmittedGuess ? "제출 완료" : "정답을 입력하세요"}
-                          value={guessText}
-                        />
-                        <button
-                          className="arcade-button arcade-button-secondary"
-                          disabled={!canGuess || !guessText.trim()}
-                          type="submit"
-                        >
-                          <Send aria-hidden="true" size={18} />
-                          {hasSubmittedGuess ? "제출 완료" : "제출"}
-                        </button>
-                      </form>
-                    ) : null}
-
                   </aside>
                     </div>
                   </>
+                )}
+              </section>
+            ) : isJoinOnly ? (
+              <section className="grid gap-4">
+                {hasJoinRoomCode ? (
+                  <form className="arcade-panel p-5 sm:p-6" onSubmit={submitJoinRoom}>
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex items-center gap-3 text-pixel-blue">
+                        <UserPlus aria-hidden="true" size={24} />
+                        <div>
+                          <h2 className="text-2xl font-black text-screen-white">방 참가</h2>
+                          <p className="mt-2 text-sm text-muted-gray">닉네임만 정하면 바로 입장합니다.</p>
+                        </div>
+                      </div>
+                      <div className="arcade-badge arcade-badge-yellow min-h-12 px-4">
+                        Room Code&nbsp;<span className="font-arcade">{joinRoomCode}</span>
+                      </div>
+                    </div>
+                    <label className="mt-5 block text-sm font-black" htmlFor="join-nickname">
+                      닉네임
+                    </label>
+                    <input
+                      className="arcade-input mt-2"
+                      id="join-nickname"
+                      maxLength={12}
+                      minLength={2}
+                      onChange={(event) => setJoinNickname(event.target.value)}
+                      placeholder="예: 빠른손"
+                      required
+                      value={joinNickname}
+                    />
+                    <button className="arcade-button arcade-button-secondary mt-5 w-full" type="submit">
+                      <UserPlus aria-hidden="true" size={18} />
+                      입장하기
+                    </button>
+                    <Link className="arcade-button arcade-button-ghost mt-3 w-full" href="/">
+                      <ArrowLeft aria-hidden="true" size={18} />
+                      코드 다시 입력
+                    </Link>
+                  </form>
+                ) : (
+                  <div className="arcade-panel grid gap-4 p-5 sm:p-6">
+                    <div className="flex items-center gap-3 text-joystick-red">
+                      <UserPlus aria-hidden="true" size={24} />
+                      <h2 className="text-2xl font-black text-screen-white">방 코드가 필요합니다</h2>
+                    </div>
+                    <p className="text-sm leading-6 text-muted-gray">
+                      참가 링크의 방 코드를 확인하거나 허브에서 코드를 다시 입력해 주세요.
+                    </p>
+                    <Link className="arcade-button arcade-button-secondary w-full" href="/">
+                      <ArrowLeft aria-hidden="true" size={18} />
+                      코드 다시 입력
+                    </Link>
+                  </div>
                 )}
               </section>
             ) : (

@@ -60,7 +60,7 @@ export function HubActions() {
           event.preventDefault();
 
           if (canQuickJoin) {
-            router.push(`/games/draw-duel?roomCode=${roomCode}`);
+            router.push(`/games/draw-duel/join?roomCode=${roomCode}`);
           }
         }}
       >
@@ -81,7 +81,7 @@ export function HubActions() {
             value={roomCode}
           />
           <p className="mt-2 text-sm text-muted-gray" id="quick-join-status">
-            방 코드를 입력하면 Draw Duel 로비 참가 폼으로 이동합니다.
+            방 코드를 입력하면 닉네임만 입력하는 참가 화면으로 이동합니다.
           </p>
         </div>
         <button

@@ -8,7 +8,11 @@ import {
   type DrawDuelAIBenchmarkFixture,
   type DrawDuelBenchmarkCategory,
 } from "./draw-duel-ai-benchmark-fixtures.js";
-import { renderDrawDuelSnapshot } from "./draw-duel-snapshot-renderer.js";
+import {
+  renderDrawDuelSnapshot,
+  renderDrawDuelStrokeSequence,
+  type DrawDuelRecordedStroke,
+} from "./draw-duel-snapshot-renderer.js";
 import { loadRootEnvFile } from "./env-file.js";
 import {
   OpenAIVisionAIGuesser,
@@ -19,8 +23,10 @@ type BenchmarkFailureKind = "error" | "timeout";
 
 type BenchmarkSampleResult = {
   category: DrawDuelBenchmarkCategory;
+  candidateCorrect: boolean;
   correct: boolean;
   failureKind?: BenchmarkFailureKind;
+  frameCount: number;
   genericWrong: boolean;
   latencyMs?: number;
   unknown: boolean;
@@ -32,6 +38,7 @@ type CategorySummary = {
   total: number;
 };
 
+const benchmarkRoundStartedAtMs = 0;
 const benchmarkSampleLimit = 30;
 const emptyScoringContext: AIGuesserScoringContext = {
   aliases: [],
@@ -114,20 +121,46 @@ function classifyFailure(error: unknown): BenchmarkFailureKind {
   return "error";
 }
 
+function createBenchmarkRecordedStrokes(
+  strokes: DrawDuelAIBenchmarkFixture["strokes"],
+): DrawDuelRecordedStroke[] {
+  return strokes.map((stroke, index) => ({
+    receivedAtMs: (index + 1) * 1_000,
+    stroke,
+  }));
+}
+
+function isBenchmarkCandidateCorrect(
+  output: { candidates?: { text: string }[] },
+  fixture: DrawDuelAIBenchmarkFixture,
+): boolean {
+  return (
+    output.candidates?.some((candidate) =>
+      isBenchmarkGuessCorrect(candidate.text, fixture),
+    ) ?? false
+  );
+}
+
 async function runSample(
   guesser: OpenAIVisionAIGuesser,
   fixture: DrawDuelAIBenchmarkFixture,
   index: number,
 ): Promise<BenchmarkSampleResult> {
-  const snapshot = await renderDrawDuelSnapshot(fixture.strokes);
+  const recordedStrokes = createBenchmarkRecordedStrokes(fixture.strokes);
+  const finalImage = await renderDrawDuelSnapshot(fixture.strokes);
+  const strokeSequence = await renderDrawDuelStrokeSequence(
+    recordedStrokes,
+    benchmarkRoundStartedAtMs,
+  );
   const startedAt = Date.now();
 
   try {
     const output = await guesser.guess(
       {
-        image: snapshot,
+        finalImage,
         roomCode: `B${String(index + 1).padStart(5, "0")}`,
         roundId: `benchmark-${String(index + 1).padStart(2, "0")}`,
+        strokeSequence,
       },
       emptyScoringContext,
     );
@@ -137,7 +170,9 @@ async function runSample(
 
     return {
       category: fixture.category,
+      candidateCorrect: isBenchmarkCandidateCorrect(output, fixture),
       correct,
+      frameCount: strokeSequence.length,
       genericWrong: !correct && isGenericWrongAnswer(output.text),
       latencyMs,
       unknown,
@@ -146,8 +181,10 @@ async function runSample(
   } catch (error: unknown) {
     return {
       category: fixture.category,
+      candidateCorrect: false,
       correct: false,
       failureKind: classifyFailure(error),
+      frameCount: strokeSequence.length,
       genericWrong: false,
       unknown: false,
       word: fixture.word,
@@ -186,6 +223,7 @@ function printSummary(
 ) {
   const total = results.length;
   const correct = results.filter((result) => result.correct).length;
+  const candidateCorrect = results.filter((result) => result.candidateCorrect).length;
   const unknown = results.filter((result) => result.unknown).length;
   const timeout = results.filter((result) => result.failureKind === "timeout").length;
   const error = results.filter((result) => result.failureKind === "error").length;
@@ -195,6 +233,10 @@ function printSummary(
     .map((result) => result.latencyMs)
     .filter((latency): latency is number => typeof latency === "number");
   const categories = summarizeCategories(results);
+  const averageFrameCount =
+    total === 0
+      ? 0
+      : results.reduce((sum, result) => sum + result.frameCount, 0) / total;
 
   console.log("Draw Duel OpenAI Vision benchmark");
   console.log(`Provider: openai`);
@@ -202,8 +244,12 @@ function printSummary(
   console.log(`Detail: ${options.detail}`);
   console.log(`Timeout: ${options.timeoutMs}ms`);
   console.log(`Samples: ${total}`);
+  console.log(`Average sequence frames: ${averageFrameCount.toFixed(1)}`);
   console.log(`Max attempts per sample: ${options.retryLimit + 1}`);
   console.log(`Accuracy: ${percentage(correct, total)} (${correct}/${total})`);
+  console.log(
+    `Candidate-list contains answer: ${percentage(candidateCorrect, total)} (${candidateCorrect}/${total})`,
+  );
   console.log(`Unknown rate: ${percentage(unknown, total)} (${unknown}/${total})`);
   console.log(
     `Latency ms: p50=${percentile(latencies, 0.5)} p95=${percentile(latencies, 0.95)} max=${Math.max(0, ...latencies)}`,

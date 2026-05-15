@@ -4,7 +4,12 @@ import type { DrawStrokePayload } from "@ai-arcade/shared";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
-import { renderDrawDuelSnapshot } from "./draw-duel-snapshot-renderer.js";
+import {
+  createDrawDuelStrokeSequenceCutoffs,
+  renderDrawDuelSnapshot,
+  renderDrawDuelStrokeSequence,
+  type DrawDuelRecordedStroke,
+} from "./draw-duel-snapshot-renderer.js";
 
 const roomCode = "ABC123";
 const playerId = "00000000-0000-4000-8000-000000000001";
@@ -83,5 +88,50 @@ describe("renderDrawDuelSnapshot", () => {
     expect(emptySnapshot.strokeCount).toBe(0);
     expect(emptySnapshot.byteLength).toBeGreaterThan(0);
   });
-});
 
+  it("renders recorded strokes into one-second sequence frames", async () => {
+    const roundStartedAtMs = 1_000;
+    const recordedStrokes: DrawDuelRecordedStroke[] = [
+      {
+        receivedAtMs: roundStartedAtMs + 400,
+        stroke: createStroke({ strokeId: "first" }),
+      },
+      {
+        receivedAtMs: roundStartedAtMs + 1_600,
+        stroke: createStroke({ strokeId: "second" }),
+      },
+      {
+        receivedAtMs: roundStartedAtMs + 2_300,
+        stroke: createStroke({ strokeId: "third" }),
+      },
+    ];
+
+    const frames = await renderDrawDuelStrokeSequence(
+      recordedStrokes,
+      roundStartedAtMs,
+    );
+
+    expect(frames.map((frame) => frame.second)).toEqual([1, 2, 3]);
+    expect(frames.map((frame) => frame.strokeCount)).toEqual([1, 2, 3]);
+    expect(frames.every((frame) => frame.image.mimeType === "image/png")).toBe(true);
+  });
+
+  it("samples long stroke sequences to at most 12 frames while keeping start, middle, and end", () => {
+    const recordedStrokes: DrawDuelRecordedStroke[] = Array.from(
+      { length: 20 },
+      (_, index) => ({
+        receivedAtMs: (index + 1) * 1_000,
+        stroke: createStroke({ strokeId: `stroke-${index + 1}` }),
+      }),
+    );
+
+    const cutoffs = createDrawDuelStrokeSequenceCutoffs(recordedStrokes, 0);
+
+    expect(cutoffs).toHaveLength(12);
+    expect(cutoffs[0]?.second).toBe(1);
+    expect(cutoffs.at(-1)?.second).toBe(20);
+    expect(cutoffs.some((cutoff) => cutoff.second >= 9 && cutoff.second <= 12)).toBe(
+      true,
+    );
+  });
+});

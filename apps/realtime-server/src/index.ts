@@ -33,7 +33,9 @@ const host = process.env.REALTIME_HOST?.trim() || fallbackHost;
 const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
 const roomManager = new RoomManager();
 const roomTimers = new Map<string, NodeJS.Timeout>();
+const aiGuessTimers = new Map<string, NodeJS.Timeout>();
 const disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
+const aiGuessRevealDelayMs = 5_000;
 const parsedDisconnectGraceMs = Number.parseInt(process.env.DISCONNECT_GRACE_MS ?? "", 10);
 const disconnectGraceMs = Number.isNaN(parsedDisconnectGraceMs)
   ? 60_000
@@ -125,6 +127,15 @@ function clearRoomTimer(roomCode: string) {
   }
 }
 
+function clearAIGuessTimer(roomCode: string) {
+  const timer = aiGuessTimers.get(roomCode);
+
+  if (timer) {
+    clearTimeout(timer);
+    aiGuessTimers.delete(roomCode);
+  }
+}
+
 function clearDisconnectGraceTimer(playerId: string) {
   const timer = disconnectGraceTimers.get(playerId);
 
@@ -166,6 +177,7 @@ function emitRejoinSnapshot(socket: DrawDuelSocket, result: RejoinResult) {
 }
 
 function emitRoundStart(result: StartGameResult | Extract<NextRoundResult, { kind: "round" }>) {
+  clearAIGuessTimer(result.room.roomCode);
   io.to(result.room.roomCode).emit("room:state", { room: result.room });
   io.to(result.room.roomCode).emit("draw-duel:canvas-clear", result.clear);
   io.to(result.room.roomCode).emit("draw-duel:round-state", result.roundState);
@@ -182,9 +194,13 @@ function emitAIGuessCompletion(roomCode: string, result: AIGuessCompletionResult
   io.to(roomCode).emit("draw-duel:round-result", result.roundResult);
 }
 
-async function completeAIGuessing(roomCode: string) {
+async function completeAIGuessing(roomCode: string, expectedRoundId?: string) {
   try {
-    const result = await roomManager.completeAIGuessing(roomCode);
+    const result = await roomManager.completeAIGuessing(
+      roomCode,
+      new Date(),
+      expectedRoundId,
+    );
 
     if (result) {
       emitAIGuessCompletion(roomCode, result);
@@ -198,6 +214,17 @@ async function completeAIGuessing(roomCode: string) {
   }
 }
 
+function scheduleAIGuessCompletion(roomCode: string, roundId: string) {
+  clearAIGuessTimer(roomCode);
+
+  const timer = setTimeout(() => {
+    aiGuessTimers.delete(roomCode);
+    void completeAIGuessing(roomCode, roundId);
+  }, aiGuessRevealDelayMs);
+
+  aiGuessTimers.set(roomCode, timer);
+}
+
 function emitTickResult(roomCode: string, result: TickResult) {
   if (result.timer) {
     io.to(roomCode).emit("draw-duel:timer-tick", result.timer);
@@ -208,7 +235,7 @@ function emitTickResult(roomCode: string, result: TickResult) {
 
     if (result.roundState.round.status === "ai-guessing") {
       clearRoomTimer(roomCode);
-      void completeAIGuessing(roomCode);
+      scheduleAIGuessCompletion(roomCode, result.roundState.round.roundId);
       return;
     }
   }
@@ -247,16 +274,19 @@ function emitLeaveEffects(result: LeaveResult) {
 
   if (result.roundResult) {
     clearRoomTimer(result.roomCode);
+    clearAIGuessTimer(result.roomCode);
     io.to(result.roomCode).emit("draw-duel:round-result", result.roundResult);
   }
 
   if (result.gameResult) {
     clearRoomTimer(result.roomCode);
+    clearAIGuessTimer(result.roomCode);
     io.to(result.roomCode).emit("draw-duel:game-result", result.gameResult);
   }
 
   if (!result.room) {
     clearRoomTimer(result.roomCode);
+    clearAIGuessTimer(result.roomCode);
   }
 }
 
@@ -287,6 +317,7 @@ function emitRoundSkipResult(result: RoundSkipResult) {
 
 function emitRoomResetResult(result: RoomResetResult) {
   clearRoomTimer(result.room.roomCode);
+  clearAIGuessTimer(result.room.roomCode);
   io.to(result.room.roomCode).emit("room:state", { room: result.room });
   io.to(result.room.roomCode).emit("draw-duel:canvas-clear", result.clear);
 }
@@ -441,7 +472,7 @@ io.on("connection", (socket) => {
 
       if (result.roundState.round.status === "ai-guessing") {
         clearRoomTimer(result.guess.roomCode);
-        void completeAIGuessing(result.guess.roomCode);
+        scheduleAIGuessCompletion(result.guess.roomCode, result.roundState.round.roundId);
       }
     } catch (error: unknown) {
       const errorPayload = toErrorPayload(error);
@@ -457,6 +488,7 @@ io.on("connection", (socket) => {
       if (result.kind === "game-result") {
         sendAck(ack, { ok: true, data: result.gameResult });
         clearRoomTimer(result.room.roomCode);
+        clearAIGuessTimer(result.room.roomCode);
         io.to(result.room.roomCode).emit("room:state", { room: result.room });
         io.to(result.room.roomCode).emit("draw-duel:game-result", result.gameResult);
         return;
@@ -475,13 +507,11 @@ io.on("connection", (socket) => {
     try {
       const result = roomManager.skipRound(payload, socket.id);
       emitRoundSkipResult(result);
-      const completion = await completeAIGuessing(result.room.roomCode);
-
-      if (!completion) {
-        throw new RoomError("AI_GUESS_FAILED", "AI 추측 결과를 만들지 못했습니다.");
-      }
-
-      sendAck(ack, { ok: true, data: completion.roundResult });
+      scheduleAIGuessCompletion(
+        result.room.roomCode,
+        result.roundState.round.roundId,
+      );
+      sendAck(ack, { ok: true, data: result.roundState });
     } catch (error: unknown) {
       const errorPayload = toErrorPayload(error);
       sendAck(ack, { ok: false, error: errorPayload });

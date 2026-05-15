@@ -314,7 +314,7 @@ export type ClientToServerEvents = {
   ) => void;
   "draw-duel:round-skip": (
     payload: DrawDuelRoundSkipPayload,
-    ack?: EventAck<DrawDuelRoundResultPayload>,
+    ack?: EventAck<DrawDuelRoundStatePayload>,
   ) => void;
   "draw-duel:result-slide-set": (
     payload: DrawDuelResultSlideSetPayload,

@@ -22,6 +22,7 @@ type DrawDuelSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 type DrawDuelBoardProps = {
   canDraw: boolean;
+  compact?: boolean;
   currentPlayerId: string | null;
   drawStatus: string;
   initialStrokes: DrawStrokePayload[];
@@ -48,7 +49,17 @@ const sendIntervalMs = 50;
 const localHistoryLimit = 500;
 const defaultColor = "#22d3ee";
 
-const colorOptions = [defaultColor, "#facc15", "#ef4444", "#22c55e"] as const;
+const colorOptions = [
+  defaultColor,
+  "#facc15",
+  "#ef4444",
+  "#22c55e",
+  "#111827",
+  "#3b82f6",
+  "#a855f7",
+  "#ec4899",
+  "#f97316",
+] as const;
 const widthOptions = [
   { label: "S", title: "얇게", value: 4 },
   { label: "M", title: "보통", value: 8 },
@@ -163,6 +174,7 @@ function drawStroke(canvas: HTMLCanvasElement, stroke: DrawStrokePayload) {
 
 export function DrawDuelBoard({
   canDraw,
+  compact = false,
   currentPlayerId,
   drawStatus,
   initialStrokes,
@@ -474,102 +486,100 @@ export function DrawDuelBoard({
   }
 
   return (
-    <section className="grid gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className={compact ? "grid gap-2 sm:gap-4" : "grid gap-4"}>
+      <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3">
         <div>
-          <h3 className="flex items-center gap-2 text-xl font-black">
+          <h3 className="flex items-center gap-2 text-lg font-black sm:text-xl">
             <Brush aria-hidden="true" className="text-electric-cyan" size={22} />
             실시간 드로잉
           </h3>
-          <p className="mt-2 text-sm leading-6 text-muted-gray">{drawStatus}</p>
+          <p className="mt-1 text-sm leading-5 text-muted-gray sm:mt-2 sm:leading-6">{drawStatus}</p>
         </div>
         <span className={canUseTools ? "arcade-badge arcade-badge-green" : "arcade-badge"}>
           {canUseTools ? "드로어" : "관전"}
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          aria-label="펜"
-          aria-pressed={tool === "pen"}
-          className={`arcade-button h-12 w-12 p-0 ${
-            tool === "pen" ? "arcade-button-secondary" : "arcade-button-ghost"
-          }`}
-          disabled={!canUseTools}
-          onClick={() => setTool("pen")}
-          title="펜"
-          type="button"
-        >
-          <PenLine aria-hidden="true" size={18} />
-        </button>
-        <button
-          aria-label="지우개"
-          aria-pressed={tool === "eraser"}
-          className={`arcade-button h-12 w-12 p-0 ${
-            tool === "eraser" ? "arcade-button-secondary" : "arcade-button-ghost"
-          }`}
-          disabled={!canUseTools}
-          onClick={() => setTool("eraser")}
-          title="지우개"
-          type="button"
-        >
-          <Eraser aria-hidden="true" size={18} />
-        </button>
+      {canUseTools ? (
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <button
+            aria-label="펜"
+            aria-pressed={tool === "pen"}
+            className={`arcade-button h-11 w-11 p-0 sm:h-12 sm:w-12 ${
+              tool === "pen" ? "arcade-button-secondary" : "arcade-button-ghost"
+            }`}
+            onClick={() => setTool("pen")}
+            title="펜"
+            type="button"
+          >
+            <PenLine aria-hidden="true" size={18} />
+          </button>
+          <button
+            aria-label="지우개"
+            aria-pressed={tool === "eraser"}
+            className={`arcade-button h-11 w-11 p-0 sm:h-12 sm:w-12 ${
+              tool === "eraser" ? "arcade-button-secondary" : "arcade-button-ghost"
+            }`}
+            onClick={() => setTool("eraser")}
+            title="지우개"
+            type="button"
+          >
+            <Eraser aria-hidden="true" size={18} />
+          </button>
 
-        <div className="flex flex-wrap gap-2" aria-label="펜 굵기">
-          {widthOptions.map((option) => (
-            <button
-              aria-label={option.title}
-              aria-pressed={width === option.value}
-              className={`arcade-button h-12 min-w-12 px-3 ${
-                width === option.value ? "arcade-button-primary" : "arcade-button-ghost"
-              }`}
-              disabled={!canUseTools}
-              key={option.value}
-              onClick={() => setWidth(option.value)}
-              title={option.title}
-              type="button"
-            >
-              <Circle aria-hidden="true" fill="currentColor" size={option.value + 8} />
-              <span className="sr-only">{option.label}</span>
-            </button>
-          ))}
+          <div className="flex flex-wrap gap-1.5 sm:gap-2" aria-label="펜 굵기">
+            {widthOptions.map((option) => (
+              <button
+                aria-label={option.title}
+                aria-pressed={width === option.value}
+                className={`arcade-button h-11 min-w-11 px-2 sm:h-12 sm:min-w-12 sm:px-3 ${
+                  width === option.value ? "arcade-button-primary" : "arcade-button-ghost"
+                }`}
+                key={option.value}
+                onClick={() => setWidth(option.value)}
+                title={option.title}
+                type="button"
+              >
+                <Circle aria-hidden="true" fill="currentColor" size={option.value + 8} />
+                <span className="sr-only">{option.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-1.5 sm:gap-2" aria-label="펜 색상">
+            {colorOptions.map((option) => (
+              <button
+                aria-label={`색상 ${option}`}
+                aria-pressed={color === option}
+                className={`h-11 w-11 border-2 shadow-pixel sm:h-12 sm:w-12 ${
+                  color === option ? "border-screen-white" : "border-line-gray"
+                }`}
+                disabled={tool === "eraser"}
+                key={option}
+                onClick={() => setColor(option)}
+                style={{ backgroundColor: option }}
+                title={`색상 ${option}`}
+                type="button"
+              />
+            ))}
+          </div>
+
+          <button
+            aria-label="전체 지우기"
+            className="arcade-button arcade-button-danger h-11 w-11 p-0 sm:h-12 sm:w-12"
+            onClick={clearBoard}
+            title="전체 지우기"
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={18} />
+          </button>
         </div>
-
-        <div className="flex flex-wrap gap-2" aria-label="펜 색상">
-          {colorOptions.map((option) => (
-            <button
-              aria-label={`색상 ${option}`}
-              aria-pressed={color === option}
-              className={`h-12 w-12 border-2 shadow-pixel ${
-                color === option ? "border-screen-white" : "border-line-gray"
-              }`}
-              disabled={!canUseTools || tool === "eraser"}
-              key={option}
-              onClick={() => setColor(option)}
-              style={{ backgroundColor: option }}
-              title={`색상 ${option}`}
-              type="button"
-            />
-          ))}
-        </div>
-
-        <button
-          aria-label="전체 지우기"
-          className="arcade-button arcade-button-danger h-12 w-12 p-0"
-          disabled={!canUseTools}
-          onClick={clearBoard}
-          title="전체 지우기"
-          type="button"
-        >
-          <Trash2 aria-hidden="true" size={18} />
-        </button>
-      </div>
+      ) : null}
 
       <div className="relative">
         <canvas
           aria-label="Draw Duel drawing canvas"
-          className={`block aspect-[8/5] w-full border-2 border-line-gray bg-screen-white ${
+          className={`block aspect-[8/5] max-h-[42svh] w-full border-2 border-line-gray bg-screen-white sm:max-h-none ${
             canUseTools ? "cursor-crosshair" : "cursor-default"
           }`}
           onPointerCancel={finishPointer}

@@ -54,7 +54,11 @@ import {
   type AIGuesserOutput,
 } from "./ai-guesser.js";
 import { createAIGuesser } from "./ai-guesser-factory.js";
-import { renderDrawDuelSnapshot } from "./draw-duel-snapshot-renderer.js";
+import {
+  renderDrawDuelSnapshot,
+  renderDrawDuelStrokeSequence,
+  type DrawDuelRecordedStroke,
+} from "./draw-duel-snapshot-renderer.js";
 import {
   drawDuelWordBank,
   type DrawDuelWordEntry,
@@ -75,7 +79,8 @@ type InternalPlayer = PlayerState & {
 };
 
 type DrawingState = {
-  history: DrawStrokePayload[];
+  history: DrawDuelRecordedStroke[];
+  sequenceStartedAtMs: number;
 };
 
 type InternalRound = DrawDuelRoundState & {
@@ -234,6 +239,7 @@ export class RoomManager {
       players: [player],
       drawing: {
         history: [],
+        sequenceStartedAtMs: Date.parse(now),
       },
       minPlayers: ROOM_MIN_PLAYERS,
       maxPlayers: ROOM_MAX_PLAYERS,
@@ -455,7 +461,11 @@ export class RoomManager {
     };
   }
 
-  submitStroke(payload: DrawStrokePayload, socketId: string): DrawStrokePayload {
+  submitStroke(
+    payload: DrawStrokePayload,
+    socketId: string,
+    now = new Date(),
+  ): DrawStrokePayload {
     const parsed = drawStrokePayloadSchema.safeParse(payload);
 
     if (!parsed.success) {
@@ -476,18 +486,25 @@ export class RoomManager {
       roomCode: room.roomCode,
     };
 
-    room.drawing.history.push(stroke);
+    room.drawing.history.push({
+      receivedAtMs: now.getTime(),
+      stroke,
+    });
 
     if (room.drawing.history.length > drawingHistoryLimit) {
       room.drawing.history.splice(0, room.drawing.history.length - drawingHistoryLimit);
     }
 
-    room.updatedAt = new Date().toISOString();
+    room.updatedAt = now.toISOString();
 
     return stroke;
   }
 
-  clearCanvas(payload: DrawClearPayload, socketId: string): DrawClearPayload {
+  clearCanvas(
+    payload: DrawClearPayload,
+    socketId: string,
+    now = new Date(),
+  ): DrawClearPayload {
     const parsed = drawClearPayloadSchema.safeParse(payload);
 
     if (!parsed.success) {
@@ -503,7 +520,8 @@ export class RoomManager {
     this.assertDrawingPlayer(room, player.playerId);
 
     room.drawing.history = [];
-    room.updatedAt = new Date().toISOString();
+    room.drawing.sequenceStartedAtMs = now.getTime();
+    room.updatedAt = now.toISOString();
 
     return {
       ...parsed.data,
@@ -718,6 +736,7 @@ export class RoomManager {
     room.status = "waiting";
     room.game = undefined;
     room.drawing.history = [];
+    room.drawing.sequenceStartedAtMs = now.getTime();
     room.updatedAt = now.toISOString();
 
     return {
@@ -782,6 +801,7 @@ export class RoomManager {
   async completeAIGuessing(
     roomCode: string,
     now = new Date(),
+    expectedRoundId?: string,
   ): Promise<AIGuessCompletionResult | undefined> {
     const room = this.rooms.get(roomCode);
 
@@ -792,6 +812,10 @@ export class RoomManager {
     const round = room.game.currentRound;
 
     if (round.status !== "ai-guessing") {
+      return undefined;
+    }
+
+    if (expectedRoundId && round.roundId !== expectedRoundId) {
       return undefined;
     }
 
@@ -819,7 +843,7 @@ export class RoomManager {
 
     return {
       roomCode: room.roomCode,
-      strokes: [...room.drawing.history],
+      strokes: this.toPublicStrokeHistory(room),
     };
   }
 
@@ -953,6 +977,7 @@ export class RoomManager {
     };
 
     room.drawing.history = [];
+    room.drawing.sequenceStartedAtMs = now.getTime();
     game.currentRound = round;
 
     return round;
@@ -1051,12 +1076,18 @@ export class RoomManager {
     };
 
     try {
-      const image = await renderDrawDuelSnapshot(room.drawing.history);
+      const publicStrokes = this.toPublicStrokeHistory(room);
+      const finalImage = await renderDrawDuelSnapshot(publicStrokes);
+      const strokeSequence = await renderDrawDuelStrokeSequence(
+        room.drawing.history,
+        room.drawing.sequenceStartedAtMs,
+      );
       aiOutput = await this.aiGuesser.guess(
         {
-          image,
+          finalImage,
           roomCode: room.roomCode,
           roundId: round.roundId,
+          strokeSequence,
         },
         {
           aliases: [...round.aliases],
@@ -1389,7 +1420,7 @@ export class RoomManager {
       settings: { ...room.settings },
       strokeHistory: {
         roomCode: room.roomCode,
-        strokes: [...room.drawing.history],
+        strokes: this.toPublicStrokeHistory(room),
       },
     };
 
@@ -1414,6 +1445,10 @@ export class RoomManager {
     }
 
     return snapshot;
+  }
+
+  private toPublicStrokeHistory(room: InternalRoom): DrawStrokePayload[] {
+    return room.drawing.history.map((entry) => entry.stroke);
   }
 
   private toScoreEntries(room: InternalRoom): DrawDuelScoreEntry[] {

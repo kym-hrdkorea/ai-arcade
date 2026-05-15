@@ -45,11 +45,13 @@ async function createJoinedRoom(
   const guestContext = await browser.newContext();
   const guestPage = await guestContext.newPage();
 
-  await guestPage.goto(`/games/draw-duel?roomCode=${host.roomCode}`);
+  await guestPage.goto(`/games/draw-duel/join?roomCode=${host.roomCode}`);
   await waitForRealtimeReady(guestPage);
-  await expect(guestPage.locator("#join-room-code")).toHaveValue(host.roomCode);
+  await expect(guestPage.locator("#join-room-code")).toHaveCount(0);
+  await expect(guestPage.locator("body")).toContainText(host.roomCode);
+  await expect(guestPage.locator("body")).not.toContainText("방 만들기");
   await guestPage.locator("#join-nickname").fill(guestNickname);
-  await guestPage.getByRole("button", { name: "코드로 참가" }).click();
+  await guestPage.getByRole("button", { name: "입장하기" }).click();
   await expect(guestPage.locator("body")).toContainText(host.roomCode);
   await expect(host.hostPage.getByRole("button", { name: "게임 시작" })).toBeEnabled();
 
@@ -81,6 +83,26 @@ async function setRoundDuration(page: Page, seconds: "30" | "45" | "60" | "90") 
 }
 
 test.describe("Draw Duel pilot readiness", () => {
+  test("routes hub quick join to a nickname-only join page", async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    try {
+    await page.goto("/");
+    await page.locator("#room-code").fill("abc123");
+    await page.getByRole("button", { name: "바로 참가" }).click();
+
+    await expect(page).toHaveURL(/\/games\/draw-duel\/join\?roomCode=ABC123/);
+    await waitForRealtimeReady(page);
+    await expect(page.locator("body")).toContainText("ABC123");
+    await expect(page.locator("#join-room-code")).toHaveCount(0);
+    await expect(page.locator("#join-nickname")).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("방 만들기");
+    } finally {
+      await context.close();
+    }
+  });
+
   test("covers host-only setup, QR, guest read-only settings, rejoin, scoring, and final result", async ({
     browser,
   }) => {
@@ -95,6 +117,7 @@ test.describe("Draw Duel pilot readiness", () => {
       await expect(room.hostPage.getByText("참가 URL")).toHaveCount(0);
       await room.hostPage.getByRole("button", { name: /QR 입장/ }).click();
       await expect(room.hostPage.getByText("참가 URL")).toBeVisible();
+      await expect(room.hostPage.getByText("/games/draw-duel/join?roomCode=")).toBeVisible();
       await expect(room.hostPage.getByText(`roomCode=${room.roomCode}`)).toBeVisible();
       await room.hostPage.getByRole("button", { name: "크게 보기" }).click();
       await expect(room.hostPage.getByRole("dialog")).toContainText(room.roomCode);
@@ -116,7 +139,9 @@ test.describe("Draw Duel pilot readiness", () => {
 
       await room.guestPage.getByPlaceholder("정답을 입력하세요").fill(answer);
       await room.guestPage.getByRole("button", { name: "제출" }).click();
-      await expect(room.hostPage.locator("body")).toContainText("AI의 답");
+      await expect(room.hostPage.locator("body")).toContainText("AI가 정답을 추측하고 있습니다");
+      await expect(room.hostPage.locator("body")).not.toContainText("AI의 답", { timeout: 1000 });
+      await expect(room.hostPage.locator("body")).toContainText("AI의 답", { timeout: 8000 });
       await expect(room.hostPage.locator("body")).toContainText(answer);
       await room.hostPage.getByRole("button", { name: "다음" }).click();
       await expect(room.guestPage.locator("body")).toContainText(/AI WIN|HUMAN WIN|DRAW/);
@@ -153,7 +178,10 @@ test.describe("Draw Duel pilot readiness", () => {
       await room.hostPage.getByRole("button", { name: "게임 시작" }).click();
       await expect(room.hostPage.locator("body")).toContainText("이번 라운드의 출제자입니다.");
       await room.hostPage.getByRole("button", { name: "라운드 스킵" }).click();
-      await expect(room.hostPage.locator("body")).toContainText("호스트가 라운드를 스킵했습니다.");
+      await expect(room.hostPage.locator("body")).toContainText("AI가 정답을 추측하고 있습니다");
+      await expect(room.hostPage.locator("body")).toContainText("호스트가 라운드를 스킵했습니다.", {
+        timeout: 8000,
+      });
       await room.hostPage.getByRole("button", { name: "다음" }).click();
       await room.hostPage.getByRole("button", { name: "다음" }).click();
       await room.hostPage.getByRole("button", { name: "다음 라운드" }).click();
@@ -185,6 +213,63 @@ test.describe("Draw Duel pilot readiness", () => {
       expect(box).not.toBeNull();
       expect(box?.y).toBeLessThan(520);
       expect(box?.width).toBeGreaterThan(560);
+    } finally {
+      await closeJoinedRoom(room);
+    }
+  });
+
+  test("keeps the mobile guesser board and answer input in the first viewport", async ({
+    browser,
+  }) => {
+    const host = await createHostRoom(browser, "host-mplay");
+    const guestContext = await browser.newContext({
+      isMobile: true,
+      viewport: {
+        height: 844,
+        width: 390,
+      },
+    });
+    const guestPage = await guestContext.newPage();
+
+    try {
+      await guestPage.goto(`/games/draw-duel/join?roomCode=${host.roomCode}`);
+      await waitForRealtimeReady(guestPage);
+      await guestPage.locator("#join-nickname").fill("guest-mobile-play");
+      await guestPage.getByRole("button", { name: "입장하기" }).click();
+      await expect(host.hostPage.getByRole("button", { name: "게임 시작" })).toBeEnabled();
+
+      await host.hostPage.getByRole("button", { name: "게임 시작" }).click();
+      await expect(guestPage.locator("body")).toContainText("host-mplay가 그리고 있습니다.");
+
+      const canvas = guestPage.getByLabel("Draw Duel drawing canvas");
+      const answerInput = guestPage.getByPlaceholder("정답을 입력하세요");
+      await expect(canvas).toBeInViewport();
+      await expect(answerInput).toBeInViewport();
+
+      const canvasBox = await canvas.boundingBox();
+      const inputBox = await answerInput.boundingBox();
+
+      expect(canvasBox).not.toBeNull();
+      expect(inputBox).not.toBeNull();
+      expect((inputBox?.y ?? 9999) + (inputBox?.height ?? 0)).toBeLessThanOrEqual(844);
+    } finally {
+      await Promise.all([host.hostContext.close(), guestContext.close()]);
+    }
+  });
+
+  test("shows the expanded drawing color palette to the active drawer", async ({ browser }) => {
+    const room = await createJoinedRoom(browser, "host-colors", "guest-colors");
+
+    try {
+      await room.hostPage.getByRole("button", { name: "게임 시작" }).click();
+
+      const colors = room.hostPage.locator("[aria-label^='색상 #']");
+      await expect(colors).toHaveCount(9);
+      await room.hostPage.getByLabel("색상 #f97316").click();
+      await expect(room.hostPage.getByLabel("색상 #f97316")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     } finally {
       await closeJoinedRoom(room);
     }

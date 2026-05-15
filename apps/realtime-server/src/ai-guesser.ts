@@ -9,10 +9,18 @@ export type DrawDuelImageSnapshot = {
   width: number;
 };
 
-export type AIGuesserInput = {
+export type DrawDuelStrokeSequenceFrame = {
   image: DrawDuelImageSnapshot;
+  offsetMs: number;
+  second: number;
+  strokeCount: number;
+};
+
+export type AIGuesserInput = {
+  finalImage: DrawDuelImageSnapshot;
   roomCode: string;
   roundId: string;
+  strokeSequence: DrawDuelStrokeSequenceFrame[];
 };
 
 export type AIGuesserScoringContext = {
@@ -21,7 +29,13 @@ export type AIGuesserScoringContext = {
   correctWord: string;
 };
 
+export type AIGuesserCandidate = {
+  confidence?: number;
+  text: string;
+};
+
 export type AIGuesserOutput = {
+  candidates?: AIGuesserCandidate[];
   confidence?: number;
   text: string;
 };
@@ -114,7 +128,7 @@ export class MockAIGuesser implements AIGuesser {
 
 export class FakeVisionAIGuesser implements AIGuesser {
   async guess(input: AIGuesserInput): Promise<AIGuesserOutput> {
-    if (input.image.strokeCount === 0) {
+    if (input.finalImage.strokeCount === 0) {
       return {
         confidence: 0.1,
         text: "모르겠음",

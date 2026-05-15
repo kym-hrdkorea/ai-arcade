@@ -629,8 +629,9 @@ describe("RoomManager", () => {
 
     expect(tick?.roundState?.round.status).toBe("ai-guessing");
     expect(aiGuesser.inputs).toHaveLength(1);
-    expect(aiGuesser.inputs[0]?.image.mimeType).toBe("image/png");
-    expect(aiGuesser.inputs[0]?.image.strokeCount).toBe(0);
+    expect(aiGuesser.inputs[0]?.finalImage.mimeType).toBe("image/png");
+    expect(aiGuesser.inputs[0]?.finalImage.strokeCount).toBe(0);
+    expect(aiGuesser.inputs[0]?.strokeSequence).toHaveLength(0);
     expect(JSON.stringify(aiGuesser.inputs[0])).not.toContain(started.word.word);
     expect(aiGuesser.scoringContexts[0]?.correctWord).toBe(started.word.word);
     expect(aiGuesser.scoringContexts[0]?.candidateWords).toHaveLength(200);
@@ -641,6 +642,91 @@ describe("RoomManager", () => {
     expect(Object.hasOwn(aiGuess?.guess ?? {}, "correctWord")).toBe(false);
     expect(aiScore?.score).toBe(0);
     expect(duplicate).toBeUndefined();
+  });
+
+  it("passes one-second stroke sequence frames to AI and discards strokes before clear", async () => {
+    const aiGuesser = new FixedAIGuesser({ confidence: 0.35, text: "?뺣떟?꾨떂" });
+    const manager = new RoomManager(aiGuesser);
+    const created = createRoom(manager);
+    joinGuest(manager, created.room.roomCode);
+    manager.startGame(
+      {
+        roomCode: created.room.roomCode,
+      },
+      "socket-host",
+      startTime,
+    );
+
+    manager.submitStroke(
+      createStroke(created.room.roomCode, created.currentPlayerId, "before-clear"),
+      "socket-host",
+      new Date(startTime.getTime() + 500),
+    );
+    manager.clearCanvas(
+      createClear(created.room.roomCode, created.currentPlayerId),
+      "socket-host",
+      new Date(startTime.getTime() + 1_000),
+    );
+    manager.submitStroke(
+      createStroke(created.room.roomCode, created.currentPlayerId, "after-clear-1"),
+      "socket-host",
+      new Date(startTime.getTime() + 1_500),
+    );
+    manager.submitStroke(
+      createStroke(created.room.roomCode, created.currentPlayerId, "after-clear-2"),
+      "socket-host",
+      new Date(startTime.getTime() + 2_400),
+    );
+    manager.tickRoom(created.room.roomCode, new Date(startTime.getTime() + 46_000));
+
+    await completeAIGuessing(manager, created.room.roomCode);
+    const aiInput = aiGuesser.inputs[0];
+
+    expect(aiInput?.finalImage.strokeCount).toBe(2);
+    expect(aiInput?.strokeSequence.map((frame) => frame.second)).toEqual([1, 2]);
+    expect(aiInput?.strokeSequence.map((frame) => frame.strokeCount)).toEqual([1, 2]);
+    expect(manager.getStrokeHistory(created.room.roomCode).strokes).toHaveLength(2);
+  });
+
+  it("uses only the top AI candidate as the official scored guess", async () => {
+    const aiGuesser = new FixedAIGuesser({
+      confidence: 0.7,
+      text: "placeholder",
+    });
+    const manager = new RoomManager(aiGuesser);
+    const created = createRoom(manager);
+    joinGuest(manager, created.room.roomCode);
+    const started = manager.startGame(
+      {
+        roomCode: created.room.roomCode,
+      },
+      "socket-host",
+      startTime,
+    );
+    const wrongGuess = wrongAnswerFor(started.word.word);
+
+    aiGuesser.setOutput({
+      candidates: [
+        {
+          confidence: 0.7,
+          text: wrongGuess,
+        },
+        {
+          confidence: 0.2,
+          text: started.word.word,
+        },
+      ],
+      confidence: 0.7,
+      text: wrongGuess,
+    });
+    manager.tickRoom(created.room.roomCode, new Date(startTime.getTime() + 46_000));
+
+    const completed = await completeAIGuessing(manager, created.room.roomCode);
+    const aiGuess = completed.aiGuess;
+
+    expect(aiGuess?.text).toBe(wrongGuess);
+    expect(aiGuess?.confidence).toBe(0.7);
+    expect(aiGuess?.isCorrect).toBe(false);
   });
 
   it("falls back to a no-score AI guess and still creates a result when the provider fails", async () => {
@@ -1323,6 +1409,72 @@ describe("RoomManager", () => {
         startTime,
       ),
     ).toThrow(RoomError);
+  });
+
+  it("ignores stale AI completion requests after the room has moved to another round", async () => {
+    const manager = new RoomManager(new FixedAIGuesser({ confidence: 0.2, text: "정답아님" }));
+    const created = createRoom(manager);
+    const guest = joinGuest(manager, created.room.roomCode);
+    const first = manager.startGame(
+      {
+        roomCode: created.room.roomCode,
+      },
+      "socket-host",
+      startTime,
+    );
+
+    await manager.submitGuess(
+      createGuess(
+        created.room.roomCode,
+        first.roundState.round.roundId,
+        guest.currentPlayerId,
+        wrongAnswerFor(first.word.word),
+      ),
+      "socket-guest",
+      startTime,
+    );
+
+    manager.resetRoom(
+      {
+        roomCode: created.room.roomCode,
+      },
+      "socket-host",
+      new Date(startTime.getTime() + 1_000),
+    );
+
+    const second = manager.startGame(
+      {
+        roomCode: created.room.roomCode,
+      },
+      "socket-host",
+      new Date(startTime.getTime() + 2_000),
+    );
+
+    await manager.submitGuess(
+      createGuess(
+        created.room.roomCode,
+        second.roundState.round.roundId,
+        guest.currentPlayerId,
+        wrongAnswerFor(second.word.word),
+      ),
+      "socket-guest",
+      new Date(startTime.getTime() + 3_000),
+    );
+
+    const stale = await manager.completeAIGuessing(
+      created.room.roomCode,
+      new Date(startTime.getTime() + 8_000),
+      first.roundState.round.roundId,
+    );
+    const snapshot = manager.getRoomSnapshot(
+      created.room.roomCode,
+      created.currentPlayerId,
+      new Date(startTime.getTime() + 8_000),
+    );
+
+    expect(stale).toBeUndefined();
+    expect(snapshot.roundState?.round.roundId).toBe(second.roundState.round.roundId);
+    expect(snapshot.roundState?.round.status).toBe("ai-guessing");
   });
 
   it("marks disconnected players during grace and rejoins with the same player id", () => {

@@ -1,5 +1,6 @@
 import {
   type AIGuesser,
+  type AIGuesserCandidate,
   type AIGuesserInput,
   type AIGuesserOutput,
   type AIGuesserScoringContext,
@@ -32,14 +33,62 @@ export type OpenAIVisionAIGuesserOptions = {
   timeoutMs?: number;
 };
 
+type OpenAIContentPart =
+  | {
+      text: string;
+      type: "input_text";
+    }
+  | {
+      detail: OpenAIImageDetail;
+      image_url: string;
+      type: "input_image";
+    };
+
 const defaultModel = "gpt-4.1";
 const defaultTimeoutMs = 8_000;
+const maxCandidates = 5;
 const openAIResponsesUrl = "https://api.openai.com/v1/responses";
+const candidateResponseSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["candidates"],
+  properties: {
+    candidates: {
+      type: "array",
+      minItems: 1,
+      maxItems: maxCandidates,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["text", "confidence"],
+        properties: {
+          text: {
+            type: "string",
+            minLength: 1,
+            maxLength: 40,
+          },
+          confidence: {
+            type: "number",
+            minimum: 0,
+            maximum: 1,
+          },
+        },
+      },
+    },
+  },
+};
 
 class OpenAIStatusError extends Error {
   constructor(public readonly status: number) {
     super(`OpenAI Responses API failed with status ${status}.`);
     this.name = "OpenAIStatusError";
+  }
+}
+
+class OpenAIOutputParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OpenAIOutputParseError";
   }
 }
 
@@ -77,6 +126,73 @@ function extractOutputText(responseBody: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+function parseJsonObject(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    throw new OpenAIOutputParseError("OpenAI response was not valid candidate JSON.");
+  }
+}
+
+function normalizeConfidence(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return Math.min(1, Math.max(0, value));
+}
+
+function normalizeCandidates(value: unknown): AIGuesserCandidate[] {
+  if (!isRecord(value) || !Array.isArray(value.candidates)) {
+    throw new OpenAIOutputParseError("OpenAI response did not include candidates.");
+  }
+
+  const candidates = value.candidates
+    .map((candidate): AIGuesserCandidate | undefined => {
+      if (!isRecord(candidate)) {
+        return undefined;
+      }
+
+      const text = normalizeAIGuesserText(
+        typeof candidate.text === "string" ? candidate.text : "",
+        "",
+      );
+
+      if (!text) {
+        return undefined;
+      }
+
+      const confidence = normalizeConfidence(candidate.confidence);
+
+      return typeof confidence === "number"
+        ? {
+            confidence,
+            text,
+          }
+        : {
+            text,
+          };
+    })
+    .filter((candidate): candidate is AIGuesserCandidate => Boolean(candidate))
+    .slice(0, maxCandidates);
+
+  if (candidates.length === 0) {
+    throw new OpenAIOutputParseError("OpenAI response did not include usable candidates.");
+  }
+
+  return candidates;
+}
+
+function extractCandidates(responseBody: unknown): AIGuesserCandidate[] {
+  const outputText = extractOutputText(responseBody);
+
+  if (!outputText) {
+    throw new OpenAIOutputParseError("OpenAI response did not include output text.");
+  }
+
+  return normalizeCandidates(parseJsonObject(outputText));
 }
 
 function normalizeTimeoutMs(value: number | undefined): number {
@@ -169,6 +285,44 @@ function describeError(error: unknown): string {
   return error.message;
 }
 
+function createPromptContent(
+  input: AIGuesserInput,
+  detail: OpenAIImageDetail,
+): OpenAIContentPart[] {
+  const content: OpenAIContentPart[] = [
+    {
+      type: "input_text",
+      text:
+        "You will receive a time-ordered stroke sequence from a live drawing game. " +
+        "Later frames are more complete. Use the sequence to infer intent from partial strokes, then use the final canvas as confirmation.",
+    },
+  ];
+
+  for (const [index, frame] of input.strokeSequence.entries()) {
+    content.push({
+      type: "input_text",
+      text: `Frame ${index + 1}: t=${frame.second}s, strokes=${frame.strokeCount}.`,
+    });
+    content.push({
+      type: "input_image",
+      image_url: frame.image.data,
+      detail,
+    });
+  }
+
+  content.push({
+    type: "input_text",
+    text: `Final canvas: strokes=${input.finalImage.strokeCount}. Return candidate guesses now.`,
+  });
+  content.push({
+    type: "input_image",
+    image_url: input.finalImage.data,
+    detail,
+  });
+
+  return content;
+}
+
 export class OpenAIVisionAIGuesser implements AIGuesser {
   private readonly apiKey: string;
   private readonly detail: OpenAIImageDetail;
@@ -210,25 +364,27 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
           body: JSON.stringify({
             model: this.model,
             instructions:
-              "You are an AI player in a fast drawing guessing game. Interpret quick doodles, symbols, partial sketches, and intentionally tricky drawings that a human might still understand. Look only at the image. Return exactly one Korean common noun. Prefer a specific concrete noun when the image is recognizable. Do not include explanations, quotes, punctuation, or multiple candidates. If unsure, return 모르겠음.",
+              "You are an AI player in a real-time drawing guessing game. " +
+              "Guess continuously from incomplete sketches and quick doodles, even when the drawing is partial or ambiguous. " +
+              "Prefer specific concrete Korean common nouns over broad categories. " +
+              "Use '모르겠음' only when the images are truly impossible to interpret. " +
+              "Return up to five candidate guesses ordered from most likely to least likely with confidence values.",
             input: [
               {
                 role: "user",
-                content: [
-                  {
-                    type: "input_text",
-                    text: "Guess the object or concept represented by this drawing. Answer with one Korean common noun only.",
-                  },
-                  {
-                    type: "input_image",
-                    image_url: input.image.data,
-                    detail: this.detail,
-                  },
-                ],
+                content: createPromptContent(input, this.detail),
               },
             ],
-            max_output_tokens: 32,
+            max_output_tokens: 256,
             store: false,
+            text: {
+              format: {
+                type: "json_schema",
+                name: "draw_duel_ai_candidates",
+                strict: true,
+                schema: candidateResponseSchema,
+              },
+            },
           }),
         });
 
@@ -237,14 +393,17 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
         }
 
         const body = (await response.json()) as unknown;
-        const outputText = extractOutputText(body);
-        const text = normalizeAIGuesserText(outputText ?? "");
+        const candidates = extractCandidates(body);
+        const topCandidate = candidates[0];
+        const text = normalizeAIGuesserText(topCandidate?.text ?? "");
 
         this.logger.info(
-          `[ai] openai guess completed room=${input.roomCode} round=${input.roundId} latencyMs=${Date.now() - overallStartedAt} bytes=${input.image.byteLength} attempt=${attempt}/${maxAttempts} text="${text}"`,
+          `[ai] openai guess completed room=${input.roomCode} round=${input.roundId} latencyMs=${Date.now() - overallStartedAt} frames=${input.strokeSequence.length} bytes=${input.finalImage.byteLength} attempt=${attempt}/${maxAttempts} candidateCount=${candidates.length} topCandidate="${text}" candidates="${candidates.map((candidate) => candidate.text).join("|")}"`,
         );
 
         return {
+          candidates,
+          confidence: topCandidate?.confidence,
           text,
         };
       } catch (error: unknown) {
