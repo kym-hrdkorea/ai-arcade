@@ -1,0 +1,17 @@
+<svg width="960" height="600" viewBox="0 0 960 600" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Draw Duel arcade thumbnail">
+  <rect width="960" height="600" fill="#0B1020"/>
+  <rect x="40" y="40" width="880" height="520" rx="12" fill="#101827" stroke="#334155" stroke-width="8"/>
+  <rect x="100" y="94" width="534" height="380" rx="8" fill="#F8FAFC" stroke="#38BDF8" stroke-width="8"/>
+  <path d="M172 375C222 298 278 289 338 344C386 388 425 332 451 272C480 204 527 180 578 223" stroke="#0B1020" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="248" cy="204" r="48" fill="#FACC15" stroke="#0B1020" stroke-width="14"/>
+  <path d="M704 145H826V244H704V145Z" fill="#1E293B" stroke="#22D3EE" stroke-width="8"/>
+  <path d="M730 183H800" stroke="#22C55E" stroke-width="10" stroke-linecap="round"/>
+  <path d="M765 158V228" stroke="#22C55E" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="731" cy="354" r="34" fill="#EF4444"/>
+  <circle cx="819" cy="354" r="34" fill="#FACC15"/>
+  <path d="M690 458H856" stroke="#8B5CF6" stroke-width="16" stroke-linecap="round"/>
+  <path d="M716 501H830" stroke="#38BDF8" stroke-width="16" stroke-linecap="round"/>
+  <rect x="118" y="500" width="70" height="20" fill="#22D3EE"/>
+  <rect x="206" y="500" width="70" height="20" fill="#FACC15"/>
+  <rect x="294" y="500" width="70" height="20" fill="#22C55E"/>
+</svg>
