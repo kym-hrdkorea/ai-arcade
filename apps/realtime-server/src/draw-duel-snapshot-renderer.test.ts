@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createDrawDuelStrokeSequenceCutoffs,
+  renderDrawDuelCroppedNormalizedSnapshot,
   renderDrawDuelNormalizedSnapshot,
   renderDrawDuelSnapshot,
   renderDrawDuelStrokeSequence,
@@ -109,6 +110,32 @@ describe("renderDrawDuelSnapshot", () => {
     expect(normalizedSnapshot.data).not.toBe(originalSnapshot.data);
   });
 
+  it("renders a cropped normalized AI canvas when visible ink exists", async () => {
+    const strokes = [
+      createStroke({
+        points: [
+          { x: 820, y: 500, t: 1 },
+          { x: 850, y: 530, t: 2 },
+        ],
+      }),
+    ];
+    const normalizedSnapshot = await renderDrawDuelNormalizedSnapshot(strokes);
+    const croppedSnapshot = await renderDrawDuelCroppedNormalizedSnapshot(strokes);
+    const emptySnapshot = await renderDrawDuelCroppedNormalizedSnapshot([]);
+    const eraserOnlySnapshot = await renderDrawDuelCroppedNormalizedSnapshot([
+      createStroke({ tool: "eraser" }),
+    ]);
+
+    expect(croppedSnapshot).toBeDefined();
+    expect(croppedSnapshot?.mimeType).toBe("image/png");
+    expect(croppedSnapshot?.width).toBe(960);
+    expect(croppedSnapshot?.height).toBe(600);
+    expect(croppedSnapshot?.strokeCount).toBe(1);
+    expect(croppedSnapshot?.data).not.toBe(normalizedSnapshot.data);
+    expect(emptySnapshot).toBeUndefined();
+    expect(eraserOnlySnapshot).toBeUndefined();
+  });
+
   it("renders recorded strokes into compact 25/50/75/100% sequence frames", async () => {
     const roundStartedAtMs = 1_000;
     const recordedStrokes: DrawDuelRecordedStroke[] = [
@@ -138,6 +165,25 @@ describe("renderDrawDuelSnapshot", () => {
     expect(frames.map((frame) => frame.second)).toEqual([1, 2, 3, 4]);
     expect(frames.map((frame) => frame.strokeCount)).toEqual([1, 2, 3, 4]);
     expect(frames.every((frame) => frame.image.mimeType === "image/png")).toBe(true);
+  });
+
+  it("dedupes unchanged sequence frames while keeping the final frame", async () => {
+    const roundStartedAtMs = 1_000;
+    const recordedStrokes: DrawDuelRecordedStroke[] = Array.from(
+      { length: 4 },
+      (_, index) => ({
+        receivedAtMs: roundStartedAtMs,
+        stroke: createStroke({ strokeId: `stroke-${index + 1}` }),
+      }),
+    );
+
+    const frames = await renderDrawDuelStrokeSequence(
+      recordedStrokes,
+      roundStartedAtMs,
+    );
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0]?.strokeCount).toBe(4);
   });
 
   it("samples long stroke sequences to 25/50/75/100% cutoffs", () => {

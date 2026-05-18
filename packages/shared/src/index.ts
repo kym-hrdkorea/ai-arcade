@@ -2,6 +2,7 @@ export type { GameCapability, GameGuide, GameGuideSlide, GameModuleMeta } from "
 export type {
   ClientToServerEvents,
   DrawClearPayload,
+  DrawDuelAIThinkingPayload,
   DrawDuelDrawerMode,
   DrawDuelGameResultEntry,
   DrawDuelGameResultPayload,

@@ -142,8 +142,12 @@ test.describe("Draw Duel pilot readiness", () => {
       await room.guestPage.getByPlaceholder("정답을 입력하세요").fill(answer);
       await room.guestPage.getByRole("button", { name: "제출" }).click();
       await expect(room.hostPage.locator("body")).toContainText("AI가 정답을 추측하고 있습니다");
+      await expect(room.hostPage.getByTestId("draw-duel-ai-thinking")).toContainText(
+        "AI가 그림의 큰 형태를 먼저 살펴보고 있어요.",
+      );
       await expect(room.hostPage.locator("body")).not.toContainText("AI의 답", { timeout: 1000 });
       await expect(room.hostPage.locator("body")).toContainText("AI의 답", { timeout: 8000 });
+      await expect(room.hostPage.getByTestId("draw-duel-ai-thinking")).toHaveCount(0);
       await expect(room.hostPage.locator("body")).toContainText(answer);
       await room.hostPage.getByRole("button", { name: "다음" }).click();
       await expect(room.guestPage.locator("body")).toContainText(/AI WIN|HUMAN WIN|DRAW/);

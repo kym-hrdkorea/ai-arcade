@@ -2,6 +2,7 @@
 
 import type {
   ClientToServerEvents,
+  DrawDuelAIThinkingPayload,
   DrawDuelGameResultPayload,
   DrawDuelGuessLogPayload,
   DrawDuelResultSlide,
@@ -242,6 +243,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   const [word, setWord] = useState<DrawDuelWordPayload | null>(null);
   const [timer, setTimer] = useState<DrawDuelTimerTickPayload | null>(null);
   const [guessLogs, setGuessLogs] = useState<DrawDuelGuessLogPayload[]>([]);
+  const [aiThinkingSteps, setAIThinkingSteps] = useState<DrawDuelAIThinkingPayload[]>([]);
   const [guessText, setGuessText] = useState("");
   const [roundResult, setRoundResult] = useState<DrawDuelRoundResultPayload | null>(null);
   const [resultSlide, setResultSlide] = useState<DrawDuelResultSlide>("ai-answer");
@@ -330,6 +332,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
     setWord(null);
     setTimer(null);
     setGuessLogs([]);
+    setAIThinkingSteps([]);
     setGuessText("");
     setRoundResult(null);
     setResultSlide("ai-answer");
@@ -409,6 +412,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
         setWord(null);
         setTimer(null);
         setGuessLogs([]);
+        setAIThinkingSteps([]);
         setRoundResult(null);
         setResultSlide("ai-answer");
         setGameResult(null);
@@ -448,6 +452,20 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
 
     socket.on("draw-duel:guess-log", appendGuessLog);
 
+    socket.on("draw-duel:ai-thinking", (payload) => {
+      if (roundIdRef.current && roundIdRef.current !== payload.roundId) {
+        return;
+      }
+
+      setAIThinkingSteps((current) => {
+        const currentRoundSteps = current.filter(
+          (step) => step.roundId === payload.roundId,
+        );
+
+        return [...currentRoundSteps, payload].slice(-6);
+      });
+    });
+
     socket.on("draw-duel:ai-guess", (payload) => {
       appendGuessLog(payload);
     });
@@ -456,6 +474,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
       setRoundResult(payload);
       setResultSlide("ai-answer");
       setGuessLogs(payload.guesses);
+      setAIThinkingSteps([]);
     });
 
     socket.on("draw-duel:result-slide-set", (payload) => {
@@ -468,6 +487,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
       setGameResult(payload);
       setRoundResult(null);
       setResultSlide("ai-answer");
+      setAIThinkingSteps([]);
       setNoticeMessage("게임이 종료됐습니다.");
     });
 
@@ -493,6 +513,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   const isPlayingView = Boolean(room?.status === "playing" && !gameResult);
   const hasJoinRoomCode = joinRoomCode.length === 6;
   const isAIGuessing = currentRound?.status === "ai-guessing" && !roundResult;
+  const visibleAIThinkingSteps = aiThinkingSteps.slice(-3);
   const resultHumanGuesses =
     roundResult?.guesses.filter((guess) => guess.source === "player") ?? [];
   const resultAIGuess = roundResult?.guesses.find((guess) => guess.source === "ai") ?? null;
@@ -1256,10 +1277,25 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                       <>
                         {isAIGuessing ? (
                           <div className="grid min-h-20 place-items-center border-2 border-pixel-blue bg-console-black p-4 text-center sm:min-h-28 sm:p-5">
-                            <p className="flex flex-wrap items-center justify-center gap-3 text-lg font-black text-screen-white sm:text-xl">
-                              <Bot aria-hidden="true" className="text-electric-cyan" size={24} />
-                              AI가 정답을 추측하고 있습니다
-                            </p>
+                            <div className="grid gap-3">
+                              <p className="flex flex-wrap items-center justify-center gap-3 text-lg font-black text-screen-white sm:text-xl">
+                                <Bot aria-hidden="true" className="text-electric-cyan" size={24} />
+                                AI가 정답을 추측하고 있습니다
+                              </p>
+                              {visibleAIThinkingSteps.length > 0 ? (
+                                <ul
+                                  aria-live="polite"
+                                  className="grid gap-1 text-sm font-bold leading-6 text-electric-cyan"
+                                  data-testid="draw-duel-ai-thinking"
+                                >
+                                  {visibleAIThinkingSteps.map((step) => (
+                                    <li key={`${step.roundId}-${step.stepIndex}-${step.text}`}>
+                                      {step.text}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                            </div>
                           </div>
                         ) : null}
 
@@ -1567,6 +1603,18 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                               <Bot aria-hidden="true" size={18} />
                               AI가 정답을 추측하고 있습니다
                             </p>
+                            {visibleAIThinkingSteps.length > 0 ? (
+                              <ul
+                                aria-live="polite"
+                                className="mt-3 grid gap-1 text-sm font-bold leading-6 text-screen-white"
+                              >
+                                {visibleAIThinkingSteps.map((step) => (
+                                  <li key={`${step.roundId}-${step.stepIndex}-${step.text}`}>
+                                    {step.text}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
                           </div>
                         ) : currentRound.status === "drawing" && isDrawer ? (
                           <div className="border-2 border-coin-yellow bg-panel-gray p-4">

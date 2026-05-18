@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { AIGuesserScoringContext } from "./ai-guesser.js";
-import { postProcessAIGuesserOutput } from "./draw-duel-ai-postprocessor.js";
+import {
+  postProcessAIGuesserOutput,
+  sanitizeAICommentarySteps,
+} from "./draw-duel-ai-postprocessor.js";
 import { drawDuelWordBank } from "./draw-duel-word-bank.js";
 
 function wordByAlias(alias: string): string {
@@ -113,5 +116,24 @@ describe("postProcessAIGuesserOutput", () => {
 
     expect(result.text).toBe(wrongWord);
     expect(result.text).not.toBe(context.correctWord);
+  });
+
+  it("removes empty, too-long, and answer-revealing commentary steps", () => {
+    const result = sanitizeAICommentarySteps(
+      [
+        "",
+        "사과",
+        "사과처럼 보여요",
+        "가".repeat(91),
+        "둥근 몸통과 짧은 선이 보여요.",
+        "먹을 것처럼 보이기도 합니다.",
+      ],
+      ["사과"],
+    );
+
+    expect(result).toEqual([
+      "둥근 몸통과 짧은 선이 보여요.",
+      "먹을 것처럼 보이기도 합니다.",
+    ]);
   });
 });

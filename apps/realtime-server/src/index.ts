@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { setTimeout as sleep } from "node:timers/promises";
 import { Server, type Socket } from "socket.io";
 
 import type {
@@ -43,8 +44,11 @@ const threeWordMonsterRoomManager = new ThreeWordMonsterRoomManager(
 );
 const roomTimers = new Map<string, NodeJS.Timeout>();
 const aiGuessTimers = new Map<string, NodeJS.Timeout>();
+const aiGuessRunIds = new Map<string, string>();
 const disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
-const aiGuessRevealDelayMs = 5_000;
+const aiGuessStartDelayMs = 500;
+const aiThinkingStepDelayMs = 1_000;
+const initialAIThinkingText = "AI가 그림의 큰 형태를 먼저 살펴보고 있어요.";
 const parsedDisconnectGraceMs = Number.parseInt(process.env.DISCONNECT_GRACE_MS ?? "", 10);
 const disconnectGraceMs = Number.isNaN(parsedDisconnectGraceMs)
   ? 60_000
@@ -144,6 +148,8 @@ function clearAIGuessTimer(roomCode: string) {
     clearTimeout(timer);
     aiGuessTimers.delete(roomCode);
   }
+
+  aiGuessRunIds.delete(roomCode);
 }
 
 function clearDisconnectGraceTimer(playerId: string) {
@@ -196,15 +202,68 @@ function emitRoundStart(result: StartGameResult | Extract<NextRoundResult, { kin
   scheduleRoomTimer(result.room.roomCode);
 }
 
-function emitAIGuessCompletion(roomCode: string, result: AIGuessCompletionResult) {
+function emitAIThinking(
+  roomCode: string,
+  roundId: string,
+  stepIndex: number,
+  totalSteps: number,
+  text: string,
+) {
+  io.to(roomCode).emit("draw-duel:ai-thinking", {
+    roomCode,
+    roundId,
+    stepIndex,
+    text,
+    totalSteps,
+  });
+}
+
+function isAIGuessRunActive(roomCode: string, runId: string | undefined) {
+  return !runId || aiGuessRunIds.get(roomCode) === runId;
+}
+
+async function emitAIGuessCompletion(
+  roomCode: string,
+  result: AIGuessCompletionResult,
+  runId?: string,
+) {
+  const commentarySteps = result.commentarySteps.slice(0, 4);
+
+  for (const [index, text] of commentarySteps.entries()) {
+    if (!isAIGuessRunActive(roomCode, runId)) {
+      return;
+    }
+
+    emitAIThinking(
+      roomCode,
+      result.roundResult.roundId,
+      index + 1,
+      commentarySteps.length,
+      text,
+    );
+    await sleep(aiThinkingStepDelayMs);
+  }
+
+  if (!isAIGuessRunActive(roomCode, runId)) {
+    return;
+  }
+
   if (result.aiGuess) {
     io.to(roomCode).emit("draw-duel:ai-guess", result.aiGuess);
   }
 
   io.to(roomCode).emit("draw-duel:round-result", result.roundResult);
+
+  if (runId && aiGuessRunIds.get(roomCode) === runId) {
+    aiGuessRunIds.delete(roomCode);
+  }
 }
 
-async function completeAIGuessing(roomCode: string, expectedRoundId?: string) {
+async function completeAIGuessing(
+  roomCode: string,
+  expectedRoundId?: string,
+  runId?: string,
+) {
   try {
     const result = await roomManager.completeAIGuessing(
       roomCode,
@@ -213,24 +272,32 @@ async function completeAIGuessing(roomCode: string, expectedRoundId?: string) {
     );
 
     if (result) {
-      emitAIGuessCompletion(roomCode, result);
+      await emitAIGuessCompletion(roomCode, result, runId);
+    } else if (runId && aiGuessRunIds.get(roomCode) === runId) {
+      aiGuessRunIds.delete(roomCode);
     }
 
     return result;
   } catch (error: unknown) {
     const errorPayload = toErrorPayload(error);
     io.to(roomCode).emit("error", errorPayload);
+    if (runId && aiGuessRunIds.get(roomCode) === runId) {
+      aiGuessRunIds.delete(roomCode);
+    }
     return undefined;
   }
 }
 
 function scheduleAIGuessCompletion(roomCode: string, roundId: string) {
   clearAIGuessTimer(roomCode);
+  const runId = `${roundId}:${Date.now()}`;
+  aiGuessRunIds.set(roomCode, runId);
+  emitAIThinking(roomCode, roundId, 1, 1, initialAIThinkingText);
 
   const timer = setTimeout(() => {
     aiGuessTimers.delete(roomCode);
-    void completeAIGuessing(roomCode, roundId);
-  }, aiGuessRevealDelayMs);
+    void completeAIGuessing(roomCode, roundId, runId);
+  }, aiGuessStartDelayMs);
 
   aiGuessTimers.set(roomCode, timer);
 }

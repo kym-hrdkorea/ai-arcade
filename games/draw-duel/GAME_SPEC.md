@@ -311,9 +311,14 @@ Phase 7에서는 `MockAIGuesser`를 기본값과 테스트 fallback으로 유지
 - 클라이언트는 OpenAI API를 직접 호출하지 않는다.
 - 서버는 AI 추측 시점에만 stroke history를 960x600 SVG로 재구성하고 `sharp`로 PNG data URL을 만든다.
 - eraser stroke는 흰색 stroke로 렌더링하고, 배경은 흰색으로 둔다.
+- AI 입력에는 전체 normalized final image와 함께 stroke bounding box 기반 cropped normalized final image를 추가한다. 빈 캔버스나 eraser-only 캔버스에서는 crop을 생략한다.
+- stroke sequence는 최대 4프레임으로 유지하되, 변화가 없는 중복 프레임은 제거하고 최종 프레임은 항상 포함한다.
 - OpenAI request에는 정답 단어, aliases, 전체 후보 단어 목록을 넣지 않는다.
+- OpenAI provider 모델 기본값은 `gpt-5`이며, `DRAW_DUEL_AI_REASONING_EFFORT=low|medium|high`가 설정된 경우에만 Responses API `reasoning.effort`로 전달한다.
+- 실제 리허설 기준 운영 추천값은 `DRAW_DUEL_AI_REASONING_EFFORT=low`, `DRAW_DUEL_AI_TIMEOUT_MS=15000`이다.
 - 정답 판정, 점수 계산, 라운드 종료는 계속 realtime-server 내부에서만 처리한다.
 - AI 호출은 라운드당 1회이며, 실패 시 `모르겠음`, 0점, 라운드 유지로 fallback한다.
+- 결과 공개 전 화면에 표시하는 문장은 모델의 비공개 chain-of-thought가 아니라 공개용 AI 관찰 코멘트다. 코멘트는 2-4개의 짧은 한글 문장으로 제한하고, 최종 답 후보를 그대로 말하지 않는다.
 - 기본 provider는 `mock`이고, `fake-vision`은 실제 API 없이 snapshot 경로를 테스트할 때 사용한다.
 
 서버 내부 타입 방향:
@@ -329,9 +334,12 @@ export type DrawDuelImageSnapshot = {
 };
 
 export type AIGuesserInput = {
+  croppedNormalizedFinalImage?: DrawDuelImageSnapshot;
+  finalImage: DrawDuelImageSnapshot;
+  normalizedFinalImage?: DrawDuelImageSnapshot;
   roomCode: string;
   roundId: string;
-  image: DrawDuelImageSnapshot;
+  strokeSequence: DrawDuelStrokeSequenceFrame[];
 };
 
 export type AIGuesserScoringContext = {

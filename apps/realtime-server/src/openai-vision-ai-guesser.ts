@@ -8,6 +8,7 @@ import {
 } from "./ai-guesser.js";
 
 export type OpenAIImageDetail = "auto" | "high" | "low";
+export type OpenAIReasoningEffort = "high" | "low" | "medium";
 export type OpenAILogger = {
   info: (message: string) => void;
   warn: (message: string) => void;
@@ -29,6 +30,7 @@ export type OpenAIVisionAIGuesserOptions = {
   fetchImpl?: OpenAIFetch;
   logger?: OpenAILogger;
   model?: string;
+  reasoningEffort?: OpenAIReasoningEffort;
   retryLimit?: number;
   timeoutMs?: number;
 };
@@ -45,13 +47,14 @@ type OpenAIContentPart =
     };
 
 const defaultModel = "gpt-5";
-const defaultTimeoutMs = 10_000;
+const defaultTimeoutMs = 15_000;
 const maxCandidates = 5;
+const maxCommentarySteps = 4;
 const openAIResponsesUrl = "https://api.openai.com/v1/responses";
 const candidateResponseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["candidates"],
+  required: ["candidates", "commentarySteps"],
   properties: {
     candidates: {
       type: "array",
@@ -75,7 +78,22 @@ const candidateResponseSchema = {
         },
       },
     },
+    commentarySteps: {
+      type: "array",
+      minItems: 2,
+      maxItems: maxCommentarySteps,
+      items: {
+        type: "string",
+        minLength: 1,
+        maxLength: 90,
+      },
+    },
   },
+};
+
+type ParsedAIResponse = {
+  candidates: AIGuesserCandidate[];
+  commentarySteps: string[];
 };
 
 class OpenAIStatusError extends Error {
@@ -185,14 +203,65 @@ function normalizeCandidates(value: unknown): AIGuesserCandidate[] {
   return candidates;
 }
 
-function extractCandidates(responseBody: unknown): AIGuesserCandidate[] {
+function normalizeCommentarySteps(value: unknown, candidates: AIGuesserCandidate[]): string[] {
+  if (!isRecord(value) || !Array.isArray(value.commentarySteps)) {
+    throw new OpenAIOutputParseError("OpenAI response did not include commentary steps.");
+  }
+
+  const candidateKeys = new Set(
+    candidates
+      .map((candidate) =>
+        candidate.text
+          .replace(/\s+/g, "")
+          .trim()
+          .toLocaleLowerCase("ko-KR"),
+      )
+      .filter((text) => text.length >= 2),
+  );
+  const commentarySteps = value.commentarySteps
+    .map((step): string | undefined => {
+      if (typeof step !== "string") {
+        return undefined;
+      }
+
+      const cleaned = step.replace(/\s+/g, " ").trim();
+      const compact = cleaned.replace(/\s+/g, "").toLocaleLowerCase("ko-KR");
+
+      if (
+        !cleaned ||
+        cleaned.length > 90 ||
+        [...candidateKeys].some((candidateKey) => compact.includes(candidateKey))
+      ) {
+        return undefined;
+      }
+
+      return cleaned;
+    })
+    .filter((step): step is string => Boolean(step))
+    .slice(0, maxCommentarySteps);
+
+  return commentarySteps.length >= 2
+    ? commentarySteps
+    : [
+        "이 그림의 큰 형태를 먼저 보고 있어요.",
+        "아직 확신이 낮아서 단서를 좁혀 보고 있습니다.",
+      ];
+}
+
+function extractAIResponse(responseBody: unknown): ParsedAIResponse {
   const outputText = extractOutputText(responseBody);
 
   if (!outputText) {
     throw new OpenAIOutputParseError("OpenAI response did not include output text.");
   }
 
-  return normalizeCandidates(parseJsonObject(outputText));
+  const parsed = parseJsonObject(outputText);
+  const candidates = normalizeCandidates(parsed);
+
+  return {
+    candidates,
+    commentarySteps: normalizeCommentarySteps(parsed, candidates),
+  };
 }
 
 function normalizeTimeoutMs(value: number | undefined): number {
@@ -213,6 +282,12 @@ function normalizeRetryLimit(value: number | undefined): number {
 
 function normalizeDetail(value: OpenAIImageDetail | undefined): OpenAIImageDetail {
   return value === "auto" || value === "high" || value === "low" ? value : "auto";
+}
+
+function normalizeReasoningEffort(
+  value: OpenAIReasoningEffort | undefined,
+): OpenAIReasoningEffort | undefined {
+  return value === "high" || value === "low" || value === "medium" ? value : undefined;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -295,7 +370,8 @@ function createPromptContent(
       text:
         "You will receive a compact time-ordered stroke sequence from a live drawing game. " +
         "The frames represent the drawing at roughly 25%, 50%, 75%, and 100% of the stroke timeline when enough strokes exist. " +
-        "Infer the intended object from the accumulating shape, not from written labels, decorative text, color tricks, or late distractor marks.",
+        "Infer the intended object from the accumulating shape, not from written labels, decorative text, color tricks, arrows, or late distractor marks. " +
+        "Favor concrete common nouns. Also write short public Korean observation steps that narrow the category without naming your final answer.",
     },
   ];
 
@@ -324,6 +400,21 @@ function createPromptContent(
     detail,
   });
 
+  if (input.croppedNormalizedFinalImage) {
+    content.push({
+      type: "input_text",
+      text:
+        `Cropped normalized object view: strokes=${input.croppedNormalizedFinalImage.strokeCount}, ` +
+        `size=${input.croppedNormalizedFinalImage.width}x${input.croppedNormalizedFinalImage.height}. ` +
+        "Use this to inspect drawings with large empty margins while still considering the full canvas.",
+    });
+    content.push({
+      type: "input_image",
+      image_url: input.croppedNormalizedFinalImage.data,
+      detail,
+    });
+  }
+
   return content;
 }
 
@@ -333,6 +424,7 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
   private readonly fetchImpl: OpenAIFetch;
   private readonly logger: OpenAILogger;
   private readonly model: string;
+  private readonly reasoningEffort: OpenAIReasoningEffort | undefined;
   private readonly retryLimit: number;
   private readonly timeoutMs: number;
 
@@ -342,6 +434,7 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.logger = options.logger ?? console;
     this.model = options.model?.trim() || defaultModel;
+    this.reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
     this.retryLimit = normalizeRetryLimit(options.retryLimit);
     this.timeoutMs = normalizeTimeoutMs(options.timeoutMs);
   }
@@ -358,6 +451,41 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
       const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
       try {
+        const requestBody: Record<string, unknown> = {
+          model: this.model,
+          instructions:
+            "You are an AI player in a real-time drawing guessing game. " +
+            "Guess from quick, incomplete, messy, or mildly adversarial sketches. " +
+            "Prioritize persistent geometry, repeated strokes, object silhouette, and shape changes across the stroke sequence. " +
+            "Ignore readable text, labels, arrows, or obvious bait marks when the shape tells a different story. " +
+            "Prefer specific concrete Korean common nouns over broad categories, even when confidence is low. " +
+            "Use '모르겠음' only when the images are truly impossible to interpret. " +
+            "Return up to five candidate guesses ordered from most likely to least likely with confidence values. " +
+            "Also return 2-4 short Korean commentarySteps for players. These are public observations only: describe visible shapes, silhouette, or broad category narrowing, and do not reveal or repeat any final candidate word.",
+          input: [
+            {
+              role: "user",
+              content: createPromptContent(input, this.detail),
+            },
+          ],
+          max_output_tokens: 2048,
+          store: false,
+          text: {
+            format: {
+              type: "json_schema",
+              name: "draw_duel_ai_candidates",
+              strict: true,
+              schema: candidateResponseSchema,
+            },
+          },
+        };
+
+        if (this.reasoningEffort) {
+          requestBody.reasoning = {
+            effort: this.reasoningEffort,
+          };
+        }
+
         const response = await this.fetchImpl(openAIResponsesUrl, {
           method: "POST",
           headers: {
@@ -365,33 +493,7 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
             "Content-Type": "application/json",
           },
           signal: controller.signal,
-          body: JSON.stringify({
-            model: this.model,
-            instructions:
-              "You are an AI player in a real-time drawing guessing game. " +
-              "Guess from quick, incomplete, messy, or mildly adversarial sketches. " +
-              "Prioritize persistent geometry, repeated strokes, and the final object silhouette. " +
-              "Ignore readable text, labels, arrows, or obvious bait marks when the shape tells a different story. " +
-              "Prefer specific concrete Korean common nouns over broad categories. " +
-              "Use '모르겠음' only when the images are truly impossible to interpret. " +
-              "Return up to five candidate guesses ordered from most likely to least likely with confidence values.",
-            input: [
-              {
-                role: "user",
-                content: createPromptContent(input, this.detail),
-              },
-            ],
-            max_output_tokens: 256,
-            store: false,
-            text: {
-              format: {
-                type: "json_schema",
-                name: "draw_duel_ai_candidates",
-                strict: true,
-                schema: candidateResponseSchema,
-              },
-            },
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         if (!response.ok) {
@@ -399,7 +501,8 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
         }
 
         const body = (await response.json()) as unknown;
-        const candidates = extractCandidates(body);
+        const parsed = extractAIResponse(body);
+        const { candidates, commentarySteps } = parsed;
         const topCandidate = candidates[0];
         const text = normalizeAIGuesserText(topCandidate?.text ?? "");
 
@@ -409,6 +512,7 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
 
         return {
           candidates,
+          commentarySteps,
           confidence: topCandidate?.confidence,
           text,
         };

@@ -516,9 +516,10 @@ Elapsed: 266ms
 ```bash
 DRAW_DUEL_AI_PROVIDER=openai
 OPENAI_API_KEY=...
-DRAW_DUEL_AI_MODEL=gpt-4.1
-DRAW_DUEL_AI_TIMEOUT_MS=8000
+DRAW_DUEL_AI_MODEL=gpt-5
+DRAW_DUEL_AI_TIMEOUT_MS=15000
 DRAW_DUEL_AI_DETAIL=high
+DRAW_DUEL_AI_REASONING_EFFORT=low
 DRAW_DUEL_AI_RETRY_LIMIT=0
 ```
 
@@ -532,13 +533,15 @@ pnpm --filter realtime-server ai:bench
 - 키가 있으면 정확히 30개 샘플을 OpenAI Responses API로 호출한다.
 - stdout에는 accuracy, unknown rate, category별 accuracy, latency p50/p95/max, timeout/error count만 남긴다.
 - API key, 원본 request body, base64 image, 원본 이미지는 출력하거나 저장하지 않는다.
+- AI 입력은 full normalized final image, stroke bounding box 기반 cropped normalized final image, 최대 4개의 deduped stroke sequence frame으로 구성한다.
+- 결과 공개 전 `draw-duel:ai-thinking`은 공개용 관찰 코멘트만 전송한다. 비공개 reasoning이나 정답/alias/candidate word bank는 외부 요청 또는 클라이언트 payload에 포함하지 않는다.
 
 해석 기준:
 
-1. timeout/error가 10%를 넘으면 다음 리허설에서 `DRAW_DUEL_AI_TIMEOUT_MS=12000`을 우선 검토한다.
+1. timeout/error가 10%를 넘으면 `DRAW_DUEL_AI_REASONING_EFFORT=low`를 유지하고 `DRAW_DUEL_AI_TIMEOUT_MS=15000` 이상에서 추가 리허설한다.
 2. 비용 보호를 위해 `DRAW_DUEL_AI_RETRY_LIMIT` 기본값은 `0`으로 둔다. retry가 필요하면 timeout, 네트워크 오류, 5xx에만 적용한다.
 3. 오답 중 “과일/동물/탈것”처럼 과도하게 일반적인 답이 20%를 넘으면 prompt의 구체 명사 선호 문구를 유지하거나 강화한다.
-4. 두 참가자로 방을 만들고 실제 그림을 그린 뒤, `ai-guessing` 대기 화면 뒤 `draw-duel:ai-guess`와 `draw-duel:round-result`가 순서대로 도착하는지 확인한다.
+4. 두 참가자로 방을 만들고 실제 그림을 그린 뒤, `ai-guessing` 대기 화면에서 관찰 코멘트가 보이고 `draw-duel:ai-thinking` 이후 `draw-duel:ai-guess`, `draw-duel:round-result`가 순서대로 도착하는지 확인한다.
 5. 라운드 스킵, 방 리셋, 재접속, 최종 결과가 AI 오류 뒤에도 정상 동작하는지 확인한다.
 
 실제 provider 리허설 기록:

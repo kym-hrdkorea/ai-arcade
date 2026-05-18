@@ -2,6 +2,7 @@ import { FakeVisionAIGuesser, MockAIGuesser, type AIGuesser } from "./ai-guesser
 import {
   OpenAIVisionAIGuesser,
   type OpenAIImageDetail,
+  type OpenAIReasoningEffort,
 } from "./openai-vision-ai-guesser.js";
 
 export type AIGuesserProvider = "fake-vision" | "mock" | "openai";
@@ -26,6 +27,16 @@ function parseRetryLimit(value: string | undefined): number | undefined {
 
 function parseDetail(value: string | undefined): OpenAIImageDetail | undefined {
   if (value === "auto" || value === "high" || value === "low") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function parseReasoningEffort(
+  value: string | undefined,
+): OpenAIReasoningEffort | undefined {
+  if (value === "low" || value === "medium" || value === "high") {
     return value;
   }
 
@@ -73,6 +84,7 @@ export function createAIGuesser(provider = process.env.DRAW_DUEL_AI_PROVIDER ?? 
       apiKey,
       detail: parseDetail(process.env.DRAW_DUEL_AI_DETAIL),
       model: process.env.DRAW_DUEL_AI_MODEL,
+      reasoningEffort: parseReasoningEffort(process.env.DRAW_DUEL_AI_REASONING_EFFORT),
       retryLimit: parseRetryLimit(process.env.DRAW_DUEL_AI_RETRY_LIMIT),
       timeoutMs: parseTimeoutMs(process.env.DRAW_DUEL_AI_TIMEOUT_MS),
     });

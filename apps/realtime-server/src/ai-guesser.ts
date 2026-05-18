@@ -17,6 +17,7 @@ export type DrawDuelStrokeSequenceFrame = {
 };
 
 export type AIGuesserInput = {
+  croppedNormalizedFinalImage?: DrawDuelImageSnapshot;
   finalImage: DrawDuelImageSnapshot;
   normalizedFinalImage?: DrawDuelImageSnapshot;
   roomCode: string;
@@ -37,6 +38,7 @@ export type AIGuesserCandidate = {
 
 export type AIGuesserOutput = {
   candidates?: AIGuesserCandidate[];
+  commentarySteps?: string[];
   confidence?: number;
   text: string;
 };
@@ -101,6 +103,10 @@ export class MockAIGuesser implements AIGuesser {
 
     if (shouldGuessCorrectly) {
       return {
+        commentarySteps: [
+          "큰 실루엣과 반복된 선을 먼저 보고 있어요.",
+          "한 가지 사물로 좁혀지는 단서가 보여요.",
+        ],
         confidence: confidenceBetween(this.random, 0.72, 0.94),
         text: scoringContext.correctWord,
       };
@@ -121,6 +127,10 @@ export class MockAIGuesser implements AIGuesser {
     const index = Math.floor(this.random() * wrongCandidates.length);
 
     return {
+      commentarySteps: [
+        "전체 형태가 아직 조금 애매해 보여요.",
+        "가장 강하게 남는 선을 기준으로 추측해 볼게요.",
+      ],
       confidence: confidenceBetween(this.random, 0.28, 0.62),
       text: wrongCandidates[index] ?? fallback,
     };
@@ -131,12 +141,20 @@ export class FakeVisionAIGuesser implements AIGuesser {
   async guess(input: AIGuesserInput): Promise<AIGuesserOutput> {
     if (input.finalImage.strokeCount === 0) {
       return {
+        commentarySteps: [
+          "아직 그림 단서가 거의 없어요.",
+          "확신이 낮아서 조심스럽게 보고 있어요.",
+        ],
         confidence: 0.1,
         text: "모르겠음",
       };
     }
 
     return {
+      commentarySteps: [
+        "선이 모여 있는 중심 부분을 먼저 보고 있어요.",
+        "아직 범주는 넓지만 사물처럼 보입니다.",
+      ],
       confidence: 0.25,
       text: "그림",
     };

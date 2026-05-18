@@ -11,6 +11,7 @@ import {
   type DrawDuelBenchmarkScenario,
 } from "./draw-duel-ai-benchmark-fixtures.js";
 import {
+  renderDrawDuelCroppedNormalizedSnapshot,
   renderDrawDuelNormalizedSnapshot,
   renderDrawDuelSnapshot,
   renderDrawDuelStrokeSequence,
@@ -21,6 +22,7 @@ import { loadRootEnvFile } from "./env-file.js";
 import {
   OpenAIVisionAIGuesser,
   type OpenAIImageDetail,
+  type OpenAIReasoningEffort,
 } from "./openai-vision-ai-guesser.js";
 
 type BenchmarkFailureKind = "error" | "timeout";
@@ -127,6 +129,14 @@ function parseDetail(value: string | undefined): OpenAIImageDetail {
   return value === "auto" || value === "high" || value === "low" ? value : "auto";
 }
 
+function parseReasoningEffort(
+  value: string | undefined,
+): OpenAIReasoningEffort | undefined {
+  return value === "low" || value === "medium" || value === "high"
+    ? value
+    : undefined;
+}
+
 function percentile(values: number[], ratio: number): number {
   if (values.length === 0) {
     return 0;
@@ -192,6 +202,8 @@ async function runSample(
   const recordedStrokes = createBenchmarkRecordedStrokes(fixture.strokes);
   const finalImage = await renderDrawDuelSnapshot(fixture.strokes);
   const normalizedFinalImage = await renderDrawDuelNormalizedSnapshot(fixture.strokes);
+  const croppedNormalizedFinalImage =
+    await renderDrawDuelCroppedNormalizedSnapshot(fixture.strokes);
   const strokeSequence = await renderDrawDuelStrokeSequence(
     recordedStrokes,
     benchmarkRoundStartedAtMs,
@@ -202,6 +214,7 @@ async function runSample(
   try {
     const rawOutput = await guesser.guess(
       {
+        croppedNormalizedFinalImage,
         finalImage,
         normalizedFinalImage,
         roomCode: `B${String(index + 1).padStart(5, "0")}`,
@@ -305,6 +318,7 @@ function printSummary(
     detail: OpenAIImageDetail;
     minAccuracy: number;
     model: string;
+    reasoningEffort?: OpenAIReasoningEffort;
     retryLimit: number;
     timeoutMs: number;
   },
@@ -338,6 +352,7 @@ function printSummary(
   console.log(`Provider: openai`);
   console.log(`Model: ${options.model}`);
   console.log(`Detail: ${options.detail}`);
+  console.log(`Reasoning effort: ${options.reasoningEffort ?? "default"}`);
   console.log(`Timeout: ${options.timeoutMs}ms`);
   console.log(`Samples: ${total}`);
   console.log(`Scored samples: ${scoredTotal}`);
@@ -447,6 +462,9 @@ export async function runDrawDuelAIBenchmark() {
 
   const model = process.env.DRAW_DUEL_AI_MODEL?.trim() || "gpt-5";
   const detail = parseDetail(process.env.DRAW_DUEL_AI_DETAIL);
+  const reasoningEffort = parseReasoningEffort(
+    process.env.DRAW_DUEL_AI_REASONING_EFFORT,
+  );
   const timeoutMs = parseNumber(process.env.DRAW_DUEL_AI_TIMEOUT_MS, 10_000);
   const retryLimit = Math.min(
     3,
@@ -464,6 +482,7 @@ export async function runDrawDuelAIBenchmark() {
       warn: () => undefined,
     },
     model,
+    reasoningEffort,
     retryLimit,
     timeoutMs,
   });
@@ -482,6 +501,7 @@ export async function runDrawDuelAIBenchmark() {
     detail,
     minAccuracy,
     model,
+    reasoningEffort,
     retryLimit,
     timeoutMs,
   });

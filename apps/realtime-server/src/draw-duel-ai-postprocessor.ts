@@ -38,6 +38,11 @@ const unknownGuessTexts = new Set([
   "알수없음",
 ]);
 
+const fallbackCommentarySteps = [
+  "이 그림의 큰 실루엣을 먼저 살펴보고 있어요.",
+  "몇 가지 단서를 좁혀 보고 있습니다.",
+];
+
 const synonymAliasMap = new Map<string, string>([
   ["auto", "car"],
   ["automobile", "car"],
@@ -244,6 +249,65 @@ function dedupeCandidates(candidates: AIGuesserCandidate[]): AIGuesserCandidate[
   return deduped;
 }
 
+function cleanCommentaryText(value: string): string | undefined {
+  const cleaned = value
+    .replace(/\s+/g, " ")
+    .replace(/^[`"'“”‘’({[<\s]+/, "")
+    .replace(/[`"'“”‘’)}\]>,\s]+$/, "")
+    .trim();
+
+  if (!cleaned || cleaned.length > 90) {
+    return undefined;
+  }
+
+  return cleaned;
+}
+
+function mentionsCandidate(text: string, candidateTexts: string[]): boolean {
+  const textKeys = comparableTextKeys(text);
+
+  for (const candidateText of candidateTexts) {
+    for (const candidateKey of comparableTextKeys(candidateText)) {
+      if (candidateKey.length < 2) {
+        continue;
+      }
+
+      if (textKeys.some((textKey) => textKey.includes(candidateKey))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function sanitizeAICommentarySteps(
+  steps: string[] | undefined,
+  candidateTexts: string[],
+): string[] {
+  const sanitized: string[] = [];
+
+  for (const step of steps ?? []) {
+    const cleaned = cleanCommentaryText(step);
+
+    if (!cleaned || mentionsCandidate(cleaned, candidateTexts)) {
+      continue;
+    }
+
+    sanitized.push(cleaned);
+
+    if (sanitized.length >= 4) {
+      break;
+    }
+  }
+
+  if (sanitized.length >= 2) {
+    return sanitized;
+  }
+
+  return fallbackCommentarySteps;
+}
+
 export function postProcessAIGuesserOutput(
   output: AIGuesserOutput,
   scoringContext: AIGuesserScoringContext,
@@ -269,9 +333,14 @@ export function postProcessAIGuesserOutput(
   const canonicalSelectedText = selectedCandidate
     ? canonicalizeCandidateText(selectedCandidate.text, scoringContext)
     : normalizeAIGuesserText(output.text);
+  const commentarySteps = sanitizeAICommentarySteps(output.commentarySteps, [
+    canonicalSelectedText,
+    ...canonicalCandidates.map((candidate) => candidate.text),
+  ]);
 
   return {
     candidates: canonicalCandidates,
+    commentarySteps,
     confidence: selectedCandidate?.confidence ?? output.confidence,
     text: canonicalSelectedText,
   };

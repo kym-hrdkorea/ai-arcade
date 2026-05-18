@@ -56,6 +56,7 @@ import {
 import { createAIGuesser } from "./ai-guesser-factory.js";
 import { postProcessAIGuesserOutput } from "./draw-duel-ai-postprocessor.js";
 import {
+  renderDrawDuelCroppedNormalizedSnapshot,
   renderDrawDuelNormalizedSnapshot,
   renderDrawDuelSnapshot,
   renderDrawDuelStrokeSequence,
@@ -113,6 +114,11 @@ type InternalRoom = Omit<RoomState, "players"> & {
   drawing: DrawingState;
   game?: InternalGame;
   players: InternalPlayer[];
+};
+
+type InternalAIGuessResult = {
+  commentarySteps: string[];
+  guess: DrawDuelGuessLogPayload;
 };
 
 export class RoomError extends Error {
@@ -183,12 +189,14 @@ export type GuessResult = {
 };
 
 export type AIGuessResult = {
+  commentarySteps: string[];
   guess: DrawDuelGuessLogPayload;
   roundState: DrawDuelRoundStatePayload;
 };
 
 export type AIGuessCompletionResult = {
   aiGuess?: DrawDuelGuessLogPayload;
+  commentarySteps: string[];
   roundResult: DrawDuelRoundResultPayload;
   roundState: DrawDuelRoundStatePayload;
 };
@@ -788,14 +796,15 @@ export class RoomManager {
       return undefined;
     }
 
-    const guess = await this.runAIGuessForRound(room, round, now);
+    const aiGuess = await this.runAIGuessForRound(room, round, now);
 
-    if (!guess) {
+    if (!aiGuess) {
       return undefined;
     }
 
     return {
-      guess,
+      commentarySteps: aiGuess.commentarySteps,
+      guess: aiGuess.guess,
       roundState: this.toRoundStatePayload(room),
     };
   }
@@ -825,7 +834,11 @@ export class RoomManager {
     const roundResult = this.finishRound(room, round.reason ?? "time-up", now);
 
     return {
-      aiGuess,
+      aiGuess: aiGuess?.guess,
+      commentarySteps: aiGuess?.commentarySteps ?? [
+        "아직 확신이 낮아요.",
+        "가장 가까운 답으로 정리해 볼게요.",
+      ],
       roundResult,
       roundState: this.toRoundStatePayload(room),
     };
@@ -1065,7 +1078,7 @@ export class RoomManager {
     room: InternalRoom,
     round: InternalRound,
     now: Date,
-  ): Promise<DrawDuelGuessLogPayload | undefined> {
+  ): Promise<InternalAIGuessResult | undefined> {
     if (round.status !== "ai-guessing" || round.aiGuessMade) {
       return undefined;
     }
@@ -1081,6 +1094,8 @@ export class RoomManager {
       const publicStrokes = this.toPublicStrokeHistory(room);
       const finalImage = await renderDrawDuelSnapshot(publicStrokes);
       const normalizedFinalImage = await renderDrawDuelNormalizedSnapshot(publicStrokes);
+      const croppedNormalizedFinalImage =
+        await renderDrawDuelCroppedNormalizedSnapshot(publicStrokes);
       const strokeSequence = await renderDrawDuelStrokeSequence(
         room.drawing.history,
         room.drawing.sequenceStartedAtMs,
@@ -1092,6 +1107,7 @@ export class RoomManager {
       };
       const rawAIOutput = await this.aiGuesser.guess(
         {
+          croppedNormalizedFinalImage,
           finalImage,
           normalizedFinalImage,
           roomCode: room.roomCode,
@@ -1136,7 +1152,13 @@ export class RoomManager {
     round.guesses.push(guess);
     room.updatedAt = now.toISOString();
 
-    return guess;
+    return {
+      commentarySteps: aiOutput.commentarySteps ?? [
+        "아직 확신이 낮아요.",
+        "가장 가까운 답으로 정리해 볼게요.",
+      ],
+      guess,
+    };
   }
 
   private startAIGuessing(

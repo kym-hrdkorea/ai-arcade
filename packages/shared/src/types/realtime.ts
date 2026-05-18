@@ -139,6 +139,14 @@ export type DrawDuelTimerTickPayload = {
   endsAt: string;
 };
 
+export type DrawDuelAIThinkingPayload = {
+  roomCode: string;
+  roundId: string;
+  stepIndex: number;
+  totalSteps: number;
+  text: string;
+};
+
 export type DrawGuessSubmitPayload = {
   roomCode: string;
   roundId: string;
@@ -375,6 +383,7 @@ export type ServerToClientEvents = {
   "draw-duel:word": (payload: DrawDuelWordPayload) => void;
   "draw-duel:timer-tick": (payload: DrawDuelTimerTickPayload) => void;
   "draw-duel:guess-log": (payload: DrawDuelGuessLogPayload) => void;
+  "draw-duel:ai-thinking": (payload: DrawDuelAIThinkingPayload) => void;
   "draw-duel:ai-guess": (payload: DrawDuelGuessLogPayload) => void;
   "draw-duel:round-result": (payload: DrawDuelRoundResultPayload) => void;
   "draw-duel:result-slide-set": (payload: DrawDuelResultSlideSetPayload) => void;

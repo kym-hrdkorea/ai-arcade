@@ -15,7 +15,12 @@ const normalizedFinalImage = {
   ...finalImage,
   data: "data:image/png;base64,normalized-final",
 };
+const croppedNormalizedFinalImage = {
+  ...finalImage,
+  data: "data:image/png;base64,cropped-normalized-final",
+};
 const input: AIGuesserInput = {
+  croppedNormalizedFinalImage,
   finalImage,
   normalizedFinalImage,
   roomCode: "ABC123",
@@ -58,9 +63,16 @@ type ParsedBody = {
   input?: {
     content?: unknown[];
   }[];
+  reasoning?: {
+    effort?: string;
+  };
   text?: {
     format?: {
       name?: string;
+      schema?: {
+        properties?: Record<string, unknown>;
+        required?: string[];
+      };
       type?: string;
     };
   };
@@ -100,12 +112,16 @@ function candidateResponse(text: string, confidence = 0.8) {
           text: "dog",
         },
       ],
+      commentarySteps: [
+        "둥근 윤곽과 짧은 선이 보여요.",
+        "작은 동물처럼 보이기도 합니다.",
+      ],
     }),
   });
 }
 
 describe("OpenAIVisionAIGuesser", () => {
-  it("sends stroke sequence images and normalized final image without scoring answers", async () => {
+  it("sends stroke sequence, normalized, and cropped images without scoring answers", async () => {
     const requestBodies: string[] = [];
     const guesser = new OpenAIVisionAIGuesser({
       apiKey: "test-key",
@@ -120,7 +136,8 @@ describe("OpenAIVisionAIGuesser", () => {
         });
       },
       logger: quietLogger,
-      model: "gpt-4.1",
+      model: "gpt-5",
+      reasoningEffort: "high",
     });
 
     const result = await guesser.guess(input, scoringContext);
@@ -133,18 +150,26 @@ describe("OpenAIVisionAIGuesser", () => {
       "data:image/png;base64,seq1",
       "data:image/png;base64,seq2",
       "data:image/png;base64,normalized-final",
+      "data:image/png;base64,cropped-normalized-final",
     ]);
     expect(images.every((image) => image.detail === "low")).toBe(true);
-    expect(bodyText).toContain('"model":"gpt-4.1"');
+    expect(bodyText).toContain('"model":"gpt-5"');
     expect(bodyText).toContain('"store":false');
+    expect(body.reasoning?.effort).toBe("high");
     expect(body.text?.format?.type).toBe("json_schema");
     expect(body.text?.format?.name).toBe("draw_duel_ai_candidates");
+    expect(body.text?.format?.schema?.required).toContain("commentarySteps");
+    expect(body.text?.format?.schema?.properties).toHaveProperty("commentarySteps");
     expect(bodyText).not.toContain(scoringContext.correctWord);
     expect(bodyText).not.toContain(scoringContext.aliases[0] ?? "");
     expect(bodyText).not.toContain(scoringContext.candidateWords[1] ?? "");
     expect(result.text).toBe("cat");
     expect(result.confidence).toBe(0.82);
     expect(result.candidates).toHaveLength(2);
+    expect(result.commentarySteps).toEqual([
+      "둥근 윤곽과 짧은 선이 보여요.",
+      "작은 동물처럼 보이기도 합니다.",
+    ]);
   });
 
   it("normalizes the top candidate and clamps confidence", async () => {
