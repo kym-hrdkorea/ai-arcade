@@ -3,6 +3,8 @@ import { Clock3, Gamepad2, Play, Users } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { GameGuideButton } from "@/components/game-guide-button";
+
 type GameCardProps = {
   game: GameModuleMeta;
 };
@@ -25,6 +27,7 @@ export function GameCard({ game }: GameCardProps) {
           src={game.thumbnail}
           unoptimized
         />
+        <GameGuideButton gameTitle={game.title} slides={game.guide.slides} />
       </div>
 
       <div className="flex flex-1 flex-col pt-5">

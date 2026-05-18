@@ -21,6 +21,13 @@ export type GameModuleMeta = {
   status: "draft" | "beta" | "stable";
   tags: string[];
   requiredCapabilities: GameCapability[];
+  guide: {
+    slides: {
+      title: string;
+      body: string;
+      items: string[];
+    }[];
+  };
 };
 
 export type GameCapability =
@@ -61,12 +68,25 @@ games/{game-id}/
 
 1. `games/{game-id}/GAME_SPEC.md` 작성
 2. `packages/shared/src/game-registry`에 메타데이터 추가
-3. `apps/web`의 게임 허브에 카드 자동 표시 확인
-4. 게임 라우트 생성
-5. 게임 전용 컴포넌트 작성
-6. 실시간 이벤트가 필요하면 realtime-server handler 추가
-7. 최소 테스트 작성
-8. README 또는 docs 업데이트
+3. 게임별 `guide.slides`에 첫 화면 카드에서 열릴 규칙/사용설명 작성
+4. `apps/web`의 게임 허브에 카드와 `?` 사용설명 자동 표시 확인
+5. 게임 라우트 생성
+6. 게임 전용 컴포넌트 작성
+7. 실시간 이벤트가 필요하면 realtime-server handler 추가
+8. 최소 테스트 작성
+9. README 또는 docs 업데이트
+
+## 4-1. 게임 카드 사용설명
+
+허브의 게임 카드에는 공통 `?` 사용설명 버튼이 자동으로 붙는다.  
+새 게임은 `GameModuleMeta.guide.slides`만 작성하면 별도 카드 컴포넌트 수정 없이 모달 슬라이드에 표시된다.
+
+작성 규칙:
+
+- 슬라이드는 실제 플레이 전 알아야 할 흐름과 핵심 규칙 중심으로 3~6개 작성한다.
+- 각 슬라이드는 짧은 `title`, 한 문단 `body`, 버튼으로 넘겨 읽기 쉬운 `items` 2~4개를 가진다.
+- 상세 운영 정책, 서버 이벤트, 내부 구현 설명은 `GAME_SPEC.md`에 두고 카드 설명에는 노출하지 않는다.
+- 한글 문구는 짧고 자연스럽게 작성한다.
 
 ## 5. 공통 게임 상태
 
@@ -175,6 +195,7 @@ error
 ```txt
 [ ] 게임 ID가 고유한가
 [ ] 게임 카드가 허브에 표시되는가
+[ ] 게임 카드 `?` 사용설명에 규칙과 플레이 순서가 표시되는가
 [ ] 방 생성과 참가가 정상 동작하는가
 [ ] 시작 전 설정 schema, 기본값, 허용 범위가 명시되었는가
 [ ] 호스트 설정 UI와 게스트 read-only 요약이 구현되었는가

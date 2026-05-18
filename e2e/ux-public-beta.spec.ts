@@ -76,6 +76,58 @@ test.describe("public beta UX readiness", () => {
     await expect(dialog).toHaveCount(0);
   });
 
+  test("opens and navigates game card guide slides from the hub", async ({ page }) => {
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "Draw Duel 사용설명 열기" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("방 만들기와 참가");
+    await expect(dialog).toContainText("1/5");
+    await expect(dialog.getByRole("button", { name: "이전" })).toBeDisabled();
+
+    await dialog.getByRole("button", { name: "다음" }).click();
+    await expect(dialog).toContainText("출제자는 그림 그리기");
+    await expect(dialog).toContainText("2/5");
+
+    await dialog.getByRole("button", { name: "이전" }).click();
+    await expect(dialog).toContainText("방 만들기와 참가");
+
+    for (let count = 0; count < 4; count += 1) {
+      await dialog.getByRole("button", { name: "다음" }).click();
+    }
+
+    await expect(dialog).toContainText("결과 확인");
+    await expect(dialog.getByRole("button", { exact: true, name: "닫기" })).toBeVisible();
+    await dialog.getByRole("button", { exact: true, name: "닫기" }).click();
+    await expect(dialog).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Three Word Monster 사용설명 열기" }).click();
+    const monsterDialog = page.getByRole("dialog");
+    await expect(monsterDialog).toContainText("Three Word Monster");
+    await page.keyboard.press("Escape");
+    await expect(monsterDialog).toHaveCount(0);
+  });
+
+  test("routes hub quick join to the selected Three Word Monster join page", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByLabel("게임").selectOption("three-word-monster");
+    await page.locator("#room-code").fill("abc123");
+
+    const quickJoinButton = page.getByRole("button", { name: "바로 참가" });
+    await expect(quickJoinButton).toBeEnabled();
+    await quickJoinButton.click();
+
+    await expect(page).toHaveURL(/\/games\/three-word-monster\/join\?roomCode=ABC123/);
+    await waitForRealtimeReady(page);
+    await expect(page.locator("#monster-room-code")).toHaveCount(0);
+    await expect(page.locator("body")).toContainText("ABC123");
+    await expect(page.locator("#monster-join-nickname")).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("방 만들기");
+  });
+
   test("plays through Three Word Monster with Korean status labels and result reset", async ({
     browser,
   }) => {
@@ -87,15 +139,20 @@ test.describe("public beta UX readiness", () => {
       await expect(host.hostPage.getByRole("button", { name: /QR 입장/ })).toBeVisible();
       await host.hostPage.getByRole("button", { name: /QR 입장/ }).click();
       await expect(host.hostPage.getByText("참가 링크")).toBeVisible();
+      await expect(host.hostPage.getByText("/games/three-word-monster/join?roomCode=")).toBeVisible();
+      await expect(host.hostPage.getByText(`roomCode=${host.roomCode}`)).toBeVisible();
       await host.hostPage.getByRole("button", { name: "크게 보기" }).click();
       await expect(host.hostPage.getByRole("dialog")).toContainText(host.roomCode);
       await host.hostPage.keyboard.press("Escape");
       await expect(host.hostPage.getByRole("dialog")).toHaveCount(0);
 
-      await guestPage.goto(`/games/three-word-monster?roomCode=${host.roomCode}`);
+      await guestPage.goto(`/games/three-word-monster/join?roomCode=${host.roomCode}`);
       await waitForRealtimeReady(guestPage);
+      await expect(guestPage.locator("#monster-room-code")).toHaveCount(0);
+      await expect(guestPage.locator("body")).toContainText(host.roomCode);
+      await expect(guestPage.locator("body")).not.toContainText("방 만들기");
       await guestPage.locator("#monster-join-nickname").fill("monster-guest");
-      await guestPage.getByRole("button", { name: "참가하기" }).click();
+      await guestPage.getByRole("button", { name: "입장하기" }).click();
       await expect(host.hostPage.getByRole("button", { name: "게임 시작" })).toBeEnabled();
 
       await expectNoRawMonsterStatus(host.hostPage);

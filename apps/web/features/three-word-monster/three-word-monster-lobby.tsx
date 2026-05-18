@@ -53,6 +53,10 @@ type StoredRoomSession = {
   roomCode: string;
 };
 
+type ThreeWordMonsterLobbyProps = {
+  entryMode?: "full" | "join-only";
+};
+
 const realtimeUrl = process.env.NEXT_PUBLIC_REALTIME_URL ?? "http://localhost:4000";
 const reconnectStorageKey = "three-word-monster:reconnect";
 const emptyWords: ThreeWordMonsterWords = ["", "", ""];
@@ -184,9 +188,10 @@ function roomStatusHelp(status: ThreeWordMonsterRoomState["status"]) {
   return labels[status];
 }
 
-export function ThreeWordMonsterLobby() {
+export function ThreeWordMonsterLobby({ entryMode = "full" }: ThreeWordMonsterLobbyProps) {
   const searchParams = useSearchParams();
   const initialRoomCode = normalizeRoomCode(searchParams.get("roomCode") ?? "");
+  const isJoinOnly = entryMode === "join-only";
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const qrModalCloseButtonRef = useRef<HTMLButtonElement>(null);
   const qrModalTriggerRef = useRef<HTMLButtonElement>(null);
@@ -255,7 +260,7 @@ export function ThreeWordMonsterLobby() {
     }
 
     setJoinUrl(
-      `${window.location.origin}/games/three-word-monster?roomCode=${room.roomCode}`,
+      `${window.location.origin}/games/three-word-monster/join?roomCode=${room.roomCode}`,
     );
   }, [room]);
 
@@ -419,6 +424,7 @@ export function ThreeWordMonsterLobby() {
   const ownImage = room?.images.find((image) => image.ownerPlayerId === currentPlayerId) ?? null;
   const currentVote =
     room?.votes.find((vote) => vote.voterPlayerId === currentPlayerId) ?? null;
+  const hasJoinRoomCode = joinRoomCode.length === 6;
   const canStart = Boolean(
     isHost && room?.status === "waiting" && connectedPlayerCount >= (room?.minPlayers ?? 2),
   );
@@ -651,7 +657,9 @@ export function ThreeWordMonsterLobby() {
                 Three Word Monster
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-gray">
-                세 단어로 괴물을 만들고, 자기 괴물을 제외한 최강 몬스터에 투표하세요.
+                {isJoinOnly
+                  ? "방 코드로 들어온 참가자는 닉네임만 입력하면 바로 입장합니다."
+                  : "세 단어로 괴물을 만들고, 자기 괴물을 제외한 최강 몬스터에 투표하세요."}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -665,7 +673,13 @@ export function ThreeWordMonsterLobby() {
             </div>
           </header>
 
-          <section className="grid flex-1 gap-5 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <section
+            className={
+              !room && isJoinOnly
+                ? "grid flex-1 justify-center gap-5 py-6 lg:grid-cols-[minmax(0,720px)]"
+                : "grid flex-1 gap-5 py-6 lg:grid-cols-[minmax(0,1fr)_360px]"
+            }
+          >
             <div className="grid content-start gap-5">
               {errorMessage ? (
                 <div className="border-2 border-joystick-red bg-console-black p-4 font-black text-red-200">
@@ -679,55 +693,25 @@ export function ThreeWordMonsterLobby() {
               ) : null}
 
               {!room ? (
-                <div className="grid gap-5 md:grid-cols-2">
-                  <form className="arcade-panel p-5 sm:p-6" onSubmit={submitCreateRoom}>
-                    <div className="flex items-center gap-3 text-coin-yellow">
-                      <Ticket aria-hidden="true" size={24} />
-                      <h2 className="text-2xl font-black text-screen-white">방 만들기</h2>
-                    </div>
-                    <label className="mt-5 block text-sm font-black" htmlFor="monster-create-nickname">
-                      닉네임 또는 팀명
-                    </label>
-                    <input
-                      className="arcade-input mt-2"
-                      id="monster-create-nickname"
-                      maxLength={12}
-                      minLength={2}
-                      onChange={(event) => setCreateNickname(event.target.value)}
-                      placeholder="예: 용감한버튼"
-                      required
-                      value={createNickname}
-                    />
-                    <button className="arcade-button arcade-button-primary mt-5 w-full" type="submit">
-                      <Sparkles aria-hidden="true" size={18} />방 만들기
-                    </button>
-                  </form>
-
-                  <form className="arcade-panel p-5 sm:p-6" onSubmit={submitJoinRoom}>
-                    <div className="flex items-center gap-3 text-pixel-blue">
-                      <UserPlus aria-hidden="true" size={24} />
-                      <h2 className="text-2xl font-black text-screen-white">방 참가</h2>
-                    </div>
-                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-sm font-black" htmlFor="monster-room-code">
-                          방 코드
-                        </label>
-                        <input
-                          className="arcade-input mt-2 uppercase"
-                          id="monster-room-code"
-                          maxLength={6}
-                          minLength={6}
-                          onChange={(event) =>
-                            setJoinRoomCode(normalizeRoomCode(event.target.value))
-                          }
-                          placeholder="A1B2C3"
-                          required
-                          value={joinRoomCode}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-black" htmlFor="monster-join-nickname">
+                isJoinOnly ? (
+                  <section className="grid gap-4">
+                    {hasJoinRoomCode ? (
+                      <form className="arcade-panel p-5 sm:p-6" onSubmit={submitJoinRoom}>
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="flex items-center gap-3 text-pixel-blue">
+                            <UserPlus aria-hidden="true" size={24} />
+                            <div>
+                              <h2 className="text-2xl font-black text-screen-white">방 참가</h2>
+                              <p className="mt-2 text-sm text-muted-gray">
+                                닉네임만 정하면 바로 입장합니다.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="arcade-badge arcade-badge-yellow min-h-12 px-4">
+                            방 코드&nbsp;<span className="font-arcade">{joinRoomCode}</span>
+                          </div>
+                        </div>
+                        <label className="mt-5 block text-sm font-black" htmlFor="monster-join-nickname">
                           닉네임
                         </label>
                         <input
@@ -740,14 +724,104 @@ export function ThreeWordMonsterLobby() {
                           required
                           value={joinNickname}
                         />
+                        <button className="arcade-button arcade-button-secondary mt-5 w-full" type="submit">
+                          <UserPlus aria-hidden="true" size={18} />
+                          입장하기
+                        </button>
+                        <Link className="arcade-button arcade-button-ghost mt-3 w-full" href="/">
+                          <ArrowLeft aria-hidden="true" size={18} />
+                          코드 다시 입력
+                        </Link>
+                      </form>
+                    ) : (
+                      <div className="arcade-panel grid gap-4 p-5 sm:p-6">
+                        <div className="flex items-center gap-3 text-joystick-red">
+                          <UserPlus aria-hidden="true" size={24} />
+                          <h2 className="text-2xl font-black text-screen-white">
+                            방 코드가 필요합니다
+                          </h2>
+                        </div>
+                        <p className="text-sm leading-6 text-muted-gray">
+                          참가 링크의 방 코드를 확인하거나 허브에서 코드를 다시 입력해 주세요.
+                        </p>
+                        <Link className="arcade-button arcade-button-secondary w-full" href="/">
+                          <ArrowLeft aria-hidden="true" size={18} />
+                          코드 다시 입력
+                        </Link>
                       </div>
-                    </div>
-                    <button className="arcade-button arcade-button-secondary mt-5 w-full" type="submit">
-                      <UserPlus aria-hidden="true" size={18} />
-                      참가하기
-                    </button>
-                  </form>
-                </div>
+                    )}
+                  </section>
+                ) : (
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <form className="arcade-panel p-5 sm:p-6" onSubmit={submitCreateRoom}>
+                      <div className="flex items-center gap-3 text-coin-yellow">
+                        <Ticket aria-hidden="true" size={24} />
+                        <h2 className="text-2xl font-black text-screen-white">방 만들기</h2>
+                      </div>
+                      <label className="mt-5 block text-sm font-black" htmlFor="monster-create-nickname">
+                        닉네임 또는 팀명
+                      </label>
+                      <input
+                        className="arcade-input mt-2"
+                        id="monster-create-nickname"
+                        maxLength={12}
+                        minLength={2}
+                        onChange={(event) => setCreateNickname(event.target.value)}
+                        placeholder="예: 용감한버튼"
+                        required
+                        value={createNickname}
+                      />
+                      <button className="arcade-button arcade-button-primary mt-5 w-full" type="submit">
+                        <Sparkles aria-hidden="true" size={18} />방 만들기
+                      </button>
+                    </form>
+
+                    <form className="arcade-panel p-5 sm:p-6" onSubmit={submitJoinRoom}>
+                      <div className="flex items-center gap-3 text-pixel-blue">
+                        <UserPlus aria-hidden="true" size={24} />
+                        <h2 className="text-2xl font-black text-screen-white">방 참가</h2>
+                      </div>
+                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-sm font-black" htmlFor="monster-room-code">
+                            방 코드
+                          </label>
+                          <input
+                            className="arcade-input mt-2 uppercase"
+                            id="monster-room-code"
+                            maxLength={6}
+                            minLength={6}
+                            onChange={(event) =>
+                              setJoinRoomCode(normalizeRoomCode(event.target.value))
+                            }
+                            placeholder="A1B2C3"
+                            required
+                            value={joinRoomCode}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-black" htmlFor="monster-join-nickname">
+                            닉네임
+                          </label>
+                          <input
+                            className="arcade-input mt-2"
+                            id="monster-join-nickname"
+                            maxLength={12}
+                            minLength={2}
+                            onChange={(event) => setJoinNickname(event.target.value)}
+                            placeholder="예: 번개팀"
+                            required
+                            value={joinNickname}
+                          />
+                        </div>
+                      </div>
+                      <button className="arcade-button arcade-button-secondary mt-5 w-full" type="submit">
+                        <UserPlus aria-hidden="true" size={18} />
+                        참가하기
+                      </button>
+                    </form>
+                  </div>
+                )
               ) : (
                 <div className="grid gap-5">
                   <section className="arcade-panel grid gap-4 p-5 sm:p-6">
@@ -984,6 +1058,7 @@ export function ThreeWordMonsterLobby() {
               )}
             </div>
 
+            {room || !isJoinOnly ? (
             <aside className="grid content-start gap-5">
               <section className="arcade-panel p-5">
                 <div className="flex items-center gap-3 text-pixel-blue">
@@ -1042,6 +1117,7 @@ export function ThreeWordMonsterLobby() {
                 </section>
               ) : null}
             </aside>
+            ) : null}
           </section>
         </div>
       </div>

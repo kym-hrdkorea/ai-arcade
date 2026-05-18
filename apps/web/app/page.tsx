@@ -63,7 +63,7 @@ export default function HomePage() {
             </div>
           </section>
 
-          <HubActions />
+          <HubActions games={games} />
         </div>
       </div>
     </main>

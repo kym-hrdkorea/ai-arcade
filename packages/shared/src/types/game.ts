@@ -8,6 +8,16 @@ export type GameCapability =
   | "team-play"
   | "host-mode";
 
+export type GameGuideSlide = {
+  title: string;
+  body: string;
+  items: readonly string[];
+};
+
+export type GameGuide = {
+  slides: readonly GameGuideSlide[];
+};
+
 export type GameModuleMeta = {
   id: string;
   title: string;
@@ -21,4 +31,5 @@ export type GameModuleMeta = {
   status: "draft" | "beta" | "stable";
   tags: readonly string[];
   requiredCapabilities: readonly GameCapability[];
+  guide: GameGuide;
 };

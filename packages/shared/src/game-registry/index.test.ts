@@ -15,4 +15,16 @@ describe("game registry", () => {
     expect(threeWordMonsterGame.route).toBe("/games/three-word-monster");
     expect(threeWordMonsterGame.maxPlayers).toBe(10);
   });
+
+  it("registers guide slides for every game card", () => {
+    for (const game of games) {
+      expect(game.guide.slides.length).toBeGreaterThan(0);
+
+      for (const slide of game.guide.slides) {
+        expect(slide.title).not.toHaveLength(0);
+        expect(slide.body).not.toHaveLength(0);
+        expect(slide.items.length).toBeGreaterThan(0);
+      }
+    }
+  });
 });

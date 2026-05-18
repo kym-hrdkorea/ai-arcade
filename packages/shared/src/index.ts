@@ -1,4 +1,4 @@
-export type { GameCapability, GameModuleMeta } from "./types/game.js";
+export type { GameCapability, GameGuide, GameGuideSlide, GameModuleMeta } from "./types/game.js";
 export type {
   ClientToServerEvents,
   DrawClearPayload,
