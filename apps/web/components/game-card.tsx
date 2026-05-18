@@ -15,8 +15,8 @@ const statusLabel: Record<GameModuleMeta["status"], string> = {
 
 export function GameCard({ game }: GameCardProps) {
   return (
-    <article className="group flex min-h-[460px] flex-col border-2 border-line-gray bg-panel-gray p-4 shadow-panel transition hover:border-electric-cyan">
-      <div className="relative aspect-[16/10] overflow-hidden border-2 border-line-gray bg-console-black">
+    <article className="group flex min-h-[360px] flex-col border-2 border-line-gray bg-panel-gray p-4 shadow-panel transition hover:border-electric-cyan sm:min-h-[460px]">
+      <div className="relative aspect-[16/8] overflow-hidden border-2 border-line-gray bg-console-black sm:aspect-[16/10]">
         <Image
           alt={`${game.title} 썸네일`}
           className="object-cover transition duration-300 group-hover:scale-[1.03]"
@@ -33,14 +33,14 @@ export function GameCard({ game }: GameCardProps) {
             <span className="arcade-badge arcade-badge-cyan">
               {statusLabel[game.status]}
             </span>
-            <h3 className="mt-2 text-2xl font-black text-screen-white">
-              {game.title}
-            </h3>
+          <h3 className="mt-2 text-xl font-black text-screen-white sm:text-2xl">
+            {game.title}
+          </h3>
           </div>
           <Gamepad2 aria-hidden="true" className="text-coin-yellow" size={28} />
         </div>
 
-        <p className="mt-4 flex-1 text-base leading-7 text-muted-gray">
+        <p className="mt-3 flex-1 text-sm leading-6 text-muted-gray sm:mt-4 sm:text-base sm:leading-7">
           {game.shortDescription}
         </p>
 

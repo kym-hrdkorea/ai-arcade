@@ -11,8 +11,9 @@ import type {
 const snapshotWidth = 960;
 const snapshotHeight = 600;
 const backgroundColor = "#ffffff";
-const sequenceFrameIntervalMs = 1_000;
-export const drawDuelMaxStrokeSequenceFrames = 12;
+const normalizedInkColor = "#111827";
+const minimumNormalizedStrokeWidth = 10;
+export const drawDuelMaxStrokeSequenceFrames = 4;
 
 export type DrawDuelRecordedStroke = {
   receivedAtMs: number;
@@ -23,6 +24,8 @@ export type DrawDuelStrokeSequenceCutoff = {
   offsetMs: number;
   second: number;
 };
+
+type RenderMode = "normalized" | "original";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -40,14 +43,24 @@ function normalizePoint(point: DrawPoint): DrawPoint {
   };
 }
 
-function strokeColor(stroke: DrawStrokePayload): string {
-  return stroke.tool === "eraser" ? backgroundColor : stroke.color;
+function strokeColor(stroke: DrawStrokePayload, mode: RenderMode): string {
+  if (stroke.tool === "eraser") {
+    return backgroundColor;
+  }
+
+  return mode === "normalized" ? normalizedInkColor : stroke.color;
 }
 
-function renderStroke(stroke: DrawStrokePayload): string {
-  const points = stroke.points.map((point) => normalizePoint(point));
+function strokeWidth(stroke: DrawStrokePayload, mode: RenderMode): number {
   const width = clamp(stroke.width, 1, 48);
-  const color = strokeColor(stroke);
+
+  return mode === "normalized" ? Math.max(width, minimumNormalizedStrokeWidth) : width;
+}
+
+function renderStroke(stroke: DrawStrokePayload, mode: RenderMode): string {
+  const points = stroke.points.map((point) => normalizePoint(point));
+  const width = strokeWidth(stroke, mode);
+  const color = strokeColor(stroke, mode);
 
   if (points.length === 1) {
     const point = points[0];
@@ -75,8 +88,8 @@ function renderStroke(stroke: DrawStrokePayload): string {
   return `<path d="${path}" fill="none" stroke="${color}" stroke-width="${formatNumber(width)}" stroke-linecap="round" stroke-linejoin="round" />`;
 }
 
-function renderSvg(strokes: DrawStrokePayload[]): string {
-  const strokeMarkup = strokes.map((stroke) => renderStroke(stroke)).join("");
+function renderSvg(strokes: DrawStrokePayload[], mode: RenderMode): string {
+  const strokeMarkup = strokes.map((stroke) => renderStroke(stroke, mode)).join("");
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${snapshotWidth}" height="${snapshotHeight}" viewBox="0 0 ${snapshotWidth} ${snapshotHeight}">`,
@@ -89,7 +102,7 @@ function renderSvg(strokes: DrawStrokePayload[]): string {
 export async function renderDrawDuelSnapshot(
   strokes: DrawStrokePayload[],
 ): Promise<DrawDuelImageSnapshot> {
-  const svg = renderSvg(strokes);
+  const svg = renderSvg(strokes, "original");
   const png = await sharp(Buffer.from(svg)).png().toBuffer();
 
   return {
@@ -102,28 +115,20 @@ export async function renderDrawDuelSnapshot(
   };
 }
 
-function evenlySample<T>(items: T[], maxItems: number): T[] {
-  if (items.length <= maxItems) {
-    return items;
-  }
+export async function renderDrawDuelNormalizedSnapshot(
+  strokes: DrawStrokePayload[],
+): Promise<DrawDuelImageSnapshot> {
+  const svg = renderSvg(strokes, "normalized");
+  const png = await sharp(Buffer.from(svg)).png().toBuffer();
 
-  if (maxItems <= 1) {
-    return [items[items.length - 1] as T];
-  }
-
-  const sampled: T[] = [];
-  const seen = new Set<number>();
-
-  for (let index = 0; index < maxItems; index += 1) {
-    const sourceIndex = Math.round((index * (items.length - 1)) / (maxItems - 1));
-
-    if (!seen.has(sourceIndex)) {
-      sampled.push(items[sourceIndex] as T);
-      seen.add(sourceIndex);
-    }
-  }
-
-  return sampled;
+  return {
+    byteLength: png.byteLength,
+    data: `data:image/png;base64,${png.toString("base64")}`,
+    height: snapshotHeight,
+    mimeType: "image/png",
+    strokeCount: strokes.length,
+    width: snapshotWidth,
+  };
 }
 
 function offsetFromRoundStart(stroke: DrawDuelRecordedStroke, roundStartedAtMs: number) {
@@ -143,17 +148,17 @@ export function createDrawDuelStrokeSequenceCutoffs(
     0,
     ...strokes.map((stroke) => offsetFromRoundStart(stroke, roundStartedAtMs)),
   );
-  const frameCount = Math.max(1, Math.ceil(maxOffsetMs / sequenceFrameIntervalMs));
-  const cutoffs = Array.from({ length: frameCount }, (_, index) => {
-    const second = index + 1;
+  const frameCount = Math.min(maxFrames, drawDuelMaxStrokeSequenceFrames, strokes.length);
+
+  return Array.from({ length: frameCount }, (_, index) => {
+    const ratio = (index + 1) / frameCount;
+    const offsetMs = Math.max(1, Math.round(maxOffsetMs * ratio));
 
     return {
-      offsetMs: second * sequenceFrameIntervalMs,
-      second,
+      offsetMs,
+      second: Math.max(1, Math.ceil(offsetMs / 1_000)),
     };
   });
-
-  return evenlySample(cutoffs, maxFrames);
 }
 
 export async function renderDrawDuelStrokeSequence(

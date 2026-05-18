@@ -24,6 +24,12 @@ import {
   type StartGameResult,
   type TickResult,
 } from "./room-manager.js";
+import { loadRootEnvFile } from "./env-file.js";
+import { createMonsterImageGenerator } from "./three-word-monster-image-generator.js";
+import { ThreeWordMonsterRoomManager } from "./three-word-monster-room-manager.js";
+import { registerThreeWordMonsterHandlers } from "./three-word-monster-socket-handlers.js";
+
+loadRootEnvFile();
 
 const fallbackPort = 4000;
 const fallbackHost = "0.0.0.0";
@@ -32,6 +38,9 @@ const port =
 const host = process.env.REALTIME_HOST?.trim() || fallbackHost;
 const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
 const roomManager = new RoomManager();
+const threeWordMonsterRoomManager = new ThreeWordMonsterRoomManager(
+  createMonsterImageGenerator(),
+);
 const roomTimers = new Map<string, NodeJS.Timeout>();
 const aiGuessTimers = new Map<string, NodeJS.Timeout>();
 const disconnectGraceTimers = new Map<string, NodeJS.Timeout>();
@@ -92,6 +101,7 @@ const httpServer = createServer((request, response) => {
         ok: true,
         service: "ai-arcade-realtime-server",
         rooms: roomManager.getRoomCount(),
+        threeWordMonsterRooms: threeWordMonsterRoomManager.getRoomCount(),
       }),
     );
     return;
@@ -323,6 +333,8 @@ function emitRoomResetResult(result: RoomResetResult) {
 }
 
 io.on("connection", (socket) => {
+  registerThreeWordMonsterHandlers(io, socket, threeWordMonsterRoomManager);
+
   socket.emit("server:ready", {
     socketId: socket.id,
     message: "AI Arcade realtime server is ready.",

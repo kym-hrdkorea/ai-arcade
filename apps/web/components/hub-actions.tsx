@@ -1,8 +1,7 @@
 "use client";
 
-import { HelpCircle, Keyboard, Settings, Smartphone, Ticket, Users, X } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { HelpCircle, Keyboard, QrCode, Smartphone, Ticket, Users, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const helpItems = [
   {
@@ -18,21 +17,40 @@ const helpItems = [
   {
     icon: Keyboard,
     title: "방 코드 참가",
-    body: "Phase 2에서 방 코드 입력으로 바로 참가할 수 있게 연결합니다.",
+    body: "방 코드를 입력하면 닉네임만 정하는 참가 화면으로 이동합니다.",
   },
   {
     icon: Smartphone,
     title: "모바일 플레이",
-    body: "모바일에서도 닉네임 입력과 정답 제출을 쉽게 할 수 있게 맞춥니다.",
+    body: "휴대폰에서도 입장, 단어 입력, 정답 제출을 할 수 있습니다.",
+  },
+  {
+    icon: QrCode,
+    title: "QR 입장",
+    body: "호스트가 연 방의 QR을 스캔하면 해당 방으로 바로 들어갑니다.",
   },
 ];
 
 export function HubActions() {
-  const router = useRouter();
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const helpTriggerRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const canQuickJoin = roomCode.length === 6;
+
+  const openHelp = useCallback(() => {
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : helpTriggerRef.current;
+    setIsHelpOpen(true);
+  }, []);
+
+  const closeHelp = useCallback(() => {
+    setIsHelpOpen(false);
+    window.setTimeout(() => {
+      previousFocusRef.current?.focus();
+    }, 0);
+  }, []);
 
   useEffect(() => {
     if (!isHelpOpen) {
@@ -43,26 +61,21 @@ export function HubActions() {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setIsHelpOpen(false);
+        closeHelp();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isHelpOpen]);
+  }, [closeHelp, isHelpOpen]);
 
   return (
     <section className="grid gap-4 pb-6 lg:grid-cols-[1fr_auto]">
       <form
+        action="/games/draw-duel/join"
         aria-describedby="quick-join-status"
         className="arcade-panel grid gap-4 p-4 sm:grid-cols-[1fr_auto]"
-        onSubmit={(event) => {
-          event.preventDefault();
-
-          if (canQuickJoin) {
-            router.push(`/games/draw-duel/join?roomCode=${roomCode}`);
-          }
-        }}
+        method="get"
       >
         <div>
           <label className="text-sm font-black text-screen-white" htmlFor="room-code">
@@ -73,6 +86,7 @@ export function HubActions() {
             id="room-code"
             inputMode="text"
             maxLength={6}
+            name="roomCode"
             onChange={(event) =>
               setRoomCode(event.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase())
             }
@@ -94,22 +108,15 @@ export function HubActions() {
         </button>
       </form>
 
-      <div className="grid grid-cols-2 gap-3 sm:flex">
+      <div className="grid gap-3 sm:flex">
         <button
           className="arcade-button arcade-button-ghost"
-          onClick={() => setIsHelpOpen(true)}
+          onClick={openHelp}
+          ref={helpTriggerRef}
           type="button"
         >
           <HelpCircle aria-hidden="true" size={18} />
           도움말
-        </button>
-        <button
-          className="arcade-button arcade-button-ghost"
-          disabled
-          type="button"
-        >
-          <Settings aria-hidden="true" size={18} />
-          설정 준비 중
         </button>
       </div>
 
@@ -120,7 +127,7 @@ export function HubActions() {
           className="fixed inset-0 z-50 grid place-items-center bg-console-black/80 px-4 py-6 backdrop-blur-sm"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              setIsHelpOpen(false);
+              closeHelp();
             }
           }}
           role="dialog"
@@ -128,7 +135,7 @@ export function HubActions() {
           <div className="arcade-panel max-h-[88vh] w-full max-w-2xl overflow-y-auto p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="font-arcade text-xs text-electric-cyan">Help</p>
+                <p className="font-arcade text-xs text-electric-cyan">안내</p>
                 <h2 className="mt-2 text-2xl font-black text-screen-white" id="hub-help-title">
                   AI Arcade 시작 안내
                 </h2>
@@ -136,7 +143,7 @@ export function HubActions() {
               <button
                 aria-label="도움말 닫기"
                 className="arcade-button arcade-button-ghost h-11 min-h-11 w-11 px-0"
-                onClick={() => setIsHelpOpen(false)}
+                onClick={closeHelp}
                 ref={closeButtonRef}
                 type="button"
               >

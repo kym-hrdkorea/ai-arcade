@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createDrawDuelStrokeSequenceCutoffs,
+  renderDrawDuelNormalizedSnapshot,
   renderDrawDuelSnapshot,
   renderDrawDuelStrokeSequence,
   type DrawDuelRecordedStroke,
@@ -89,20 +90,43 @@ describe("renderDrawDuelSnapshot", () => {
     expect(emptySnapshot.byteLength).toBeGreaterThan(0);
   });
 
-  it("renders recorded strokes into one-second sequence frames", async () => {
+  it("renders a normalized monochrome final canvas for AI guessing", async () => {
+    const originalSnapshot = await renderDrawDuelSnapshot([
+      createStroke({ color: "#ef4444", width: 4 }),
+    ]);
+    const normalizedSnapshot = await renderDrawDuelNormalizedSnapshot([
+      createStroke({ color: "#ef4444", width: 4 }),
+    ]);
+    const buffer = decodeSnapshotData(normalizedSnapshot.data);
+    const metadata = await sharp(buffer).metadata();
+
+    expect(normalizedSnapshot.mimeType).toBe("image/png");
+    expect(normalizedSnapshot.width).toBe(960);
+    expect(normalizedSnapshot.height).toBe(600);
+    expect(normalizedSnapshot.strokeCount).toBe(1);
+    expect(normalizedSnapshot.byteLength).toBe(buffer.byteLength);
+    expect(metadata.format).toBe("png");
+    expect(normalizedSnapshot.data).not.toBe(originalSnapshot.data);
+  });
+
+  it("renders recorded strokes into compact 25/50/75/100% sequence frames", async () => {
     const roundStartedAtMs = 1_000;
     const recordedStrokes: DrawDuelRecordedStroke[] = [
       {
-        receivedAtMs: roundStartedAtMs + 400,
+        receivedAtMs: roundStartedAtMs + 1_000,
         stroke: createStroke({ strokeId: "first" }),
       },
       {
-        receivedAtMs: roundStartedAtMs + 1_600,
+        receivedAtMs: roundStartedAtMs + 2_000,
         stroke: createStroke({ strokeId: "second" }),
       },
       {
-        receivedAtMs: roundStartedAtMs + 2_300,
+        receivedAtMs: roundStartedAtMs + 3_000,
         stroke: createStroke({ strokeId: "third" }),
+      },
+      {
+        receivedAtMs: roundStartedAtMs + 4_000,
+        stroke: createStroke({ strokeId: "fourth" }),
       },
     ];
 
@@ -111,12 +135,12 @@ describe("renderDrawDuelSnapshot", () => {
       roundStartedAtMs,
     );
 
-    expect(frames.map((frame) => frame.second)).toEqual([1, 2, 3]);
-    expect(frames.map((frame) => frame.strokeCount)).toEqual([1, 2, 3]);
+    expect(frames.map((frame) => frame.second)).toEqual([1, 2, 3, 4]);
+    expect(frames.map((frame) => frame.strokeCount)).toEqual([1, 2, 3, 4]);
     expect(frames.every((frame) => frame.image.mimeType === "image/png")).toBe(true);
   });
 
-  it("samples long stroke sequences to at most 12 frames while keeping start, middle, and end", () => {
+  it("samples long stroke sequences to 25/50/75/100% cutoffs", () => {
     const recordedStrokes: DrawDuelRecordedStroke[] = Array.from(
       { length: 20 },
       (_, index) => ({
@@ -127,11 +151,8 @@ describe("renderDrawDuelSnapshot", () => {
 
     const cutoffs = createDrawDuelStrokeSequenceCutoffs(recordedStrokes, 0);
 
-    expect(cutoffs).toHaveLength(12);
-    expect(cutoffs[0]?.second).toBe(1);
+    expect(cutoffs).toHaveLength(4);
+    expect(cutoffs.map((cutoff) => cutoff.second)).toEqual([5, 10, 15, 20]);
     expect(cutoffs.at(-1)?.second).toBe(20);
-    expect(cutoffs.some((cutoff) => cutoff.second >= 9 && cutoff.second <= 12)).toBe(
-      true,
-    );
   });
 });

@@ -630,7 +630,9 @@ describe("RoomManager", () => {
     expect(tick?.roundState?.round.status).toBe("ai-guessing");
     expect(aiGuesser.inputs).toHaveLength(1);
     expect(aiGuesser.inputs[0]?.finalImage.mimeType).toBe("image/png");
+    expect(aiGuesser.inputs[0]?.normalizedFinalImage?.mimeType).toBe("image/png");
     expect(aiGuesser.inputs[0]?.finalImage.strokeCount).toBe(0);
+    expect(aiGuesser.inputs[0]?.normalizedFinalImage?.strokeCount).toBe(0);
     expect(aiGuesser.inputs[0]?.strokeSequence).toHaveLength(0);
     expect(JSON.stringify(aiGuesser.inputs[0])).not.toContain(started.word.word);
     expect(aiGuesser.scoringContexts[0]?.correctWord).toBe(started.word.word);
@@ -683,6 +685,7 @@ describe("RoomManager", () => {
     const aiInput = aiGuesser.inputs[0];
 
     expect(aiInput?.finalImage.strokeCount).toBe(2);
+    expect(aiInput?.normalizedFinalImage?.strokeCount).toBe(2);
     expect(aiInput?.strokeSequence.map((frame) => frame.second)).toEqual([1, 2]);
     expect(aiInput?.strokeSequence.map((frame) => frame.strokeCount)).toEqual([1, 2]);
     expect(manager.getStrokeHistory(created.room.roomCode).strokes).toHaveLength(2);

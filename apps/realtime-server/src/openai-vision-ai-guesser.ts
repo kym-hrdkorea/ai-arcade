@@ -44,8 +44,8 @@ type OpenAIContentPart =
       type: "input_image";
     };
 
-const defaultModel = "gpt-4.1";
-const defaultTimeoutMs = 8_000;
+const defaultModel = "gpt-5";
+const defaultTimeoutMs = 10_000;
 const maxCandidates = 5;
 const openAIResponsesUrl = "https://api.openai.com/v1/responses";
 const candidateResponseSchema = {
@@ -212,7 +212,7 @@ function normalizeRetryLimit(value: number | undefined): number {
 }
 
 function normalizeDetail(value: OpenAIImageDetail | undefined): OpenAIImageDetail {
-  return value === "auto" || value === "high" || value === "low" ? value : "high";
+  return value === "auto" || value === "high" || value === "low" ? value : "auto";
 }
 
 function isAbortError(error: unknown): boolean {
@@ -293,8 +293,9 @@ function createPromptContent(
     {
       type: "input_text",
       text:
-        "You will receive a time-ordered stroke sequence from a live drawing game. " +
-        "Later frames are more complete. Use the sequence to infer intent from partial strokes, then use the final canvas as confirmation.",
+        "You will receive a compact time-ordered stroke sequence from a live drawing game. " +
+        "The frames represent the drawing at roughly 25%, 50%, 75%, and 100% of the stroke timeline when enough strokes exist. " +
+        "Infer the intended object from the accumulating shape, not from written labels, decorative text, color tricks, or late distractor marks.",
     },
   ];
 
@@ -312,11 +313,14 @@ function createPromptContent(
 
   content.push({
     type: "input_text",
-    text: `Final canvas: strokes=${input.finalImage.strokeCount}. Return candidate guesses now.`,
+    text:
+      `Normalized final canvas: strokes=${input.finalImage.strokeCount}, ` +
+      `size=${input.finalImage.width}x${input.finalImage.height}. ` +
+      "This monochrome version removes color noise and thickens thin strokes. Return candidate guesses now.",
   });
   content.push({
     type: "input_image",
-    image_url: input.finalImage.data,
+    image_url: (input.normalizedFinalImage ?? input.finalImage).data,
     detail,
   });
 
@@ -365,7 +369,9 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
             model: this.model,
             instructions:
               "You are an AI player in a real-time drawing guessing game. " +
-              "Guess continuously from incomplete sketches and quick doodles, even when the drawing is partial or ambiguous. " +
+              "Guess from quick, incomplete, messy, or mildly adversarial sketches. " +
+              "Prioritize persistent geometry, repeated strokes, and the final object silhouette. " +
+              "Ignore readable text, labels, arrows, or obvious bait marks when the shape tells a different story. " +
               "Prefer specific concrete Korean common nouns over broad categories. " +
               "Use '모르겠음' only when the images are truly impossible to interpret. " +
               "Return up to five candidate guesses ordered from most likely to least likely with confidence values.",

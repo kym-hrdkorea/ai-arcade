@@ -54,7 +54,9 @@ import {
   type AIGuesserOutput,
 } from "./ai-guesser.js";
 import { createAIGuesser } from "./ai-guesser-factory.js";
+import { postProcessAIGuesserOutput } from "./draw-duel-ai-postprocessor.js";
 import {
+  renderDrawDuelNormalizedSnapshot,
   renderDrawDuelSnapshot,
   renderDrawDuelStrokeSequence,
   type DrawDuelRecordedStroke,
@@ -1078,23 +1080,27 @@ export class RoomManager {
     try {
       const publicStrokes = this.toPublicStrokeHistory(room);
       const finalImage = await renderDrawDuelSnapshot(publicStrokes);
+      const normalizedFinalImage = await renderDrawDuelNormalizedSnapshot(publicStrokes);
       const strokeSequence = await renderDrawDuelStrokeSequence(
         room.drawing.history,
         room.drawing.sequenceStartedAtMs,
       );
-      aiOutput = await this.aiGuesser.guess(
+      const scoringContext = {
+        aliases: [...round.aliases],
+        candidateWords: game.wordBank.map((entry) => entry.word),
+        correctWord: round.word,
+      };
+      const rawAIOutput = await this.aiGuesser.guess(
         {
           finalImage,
+          normalizedFinalImage,
           roomCode: room.roomCode,
           roundId: round.roundId,
           strokeSequence,
         },
-        {
-          aliases: [...round.aliases],
-          candidateWords: game.wordBank.map((entry) => entry.word),
-          correctWord: round.word,
-        },
+        scoringContext,
       );
+      aiOutput = postProcessAIGuesserOutput(rawAIOutput, scoringContext);
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : "unknown error";
       console.warn(

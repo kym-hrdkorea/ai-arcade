@@ -18,6 +18,7 @@ export type DrawDuelStrokeSequenceFrame = {
 
 export type AIGuesserInput = {
   finalImage: DrawDuelImageSnapshot;
+  normalizedFinalImage?: DrawDuelImageSnapshot;
   roomCode: string;
   roundId: string;
   strokeSequence: DrawDuelStrokeSequenceFrame[];

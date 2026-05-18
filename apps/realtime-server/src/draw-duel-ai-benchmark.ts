@@ -3,16 +3,20 @@ import { pathToFileURL } from "node:url";
 
 import type { AIGuesserScoringContext } from "./ai-guesser.js";
 import { sanitizeOpenAIApiKey } from "./ai-guesser-factory.js";
+import { postProcessAIGuesserOutput } from "./draw-duel-ai-postprocessor.js";
 import {
   drawDuelAIBenchmarkFixtures,
   type DrawDuelAIBenchmarkFixture,
   type DrawDuelBenchmarkCategory,
+  type DrawDuelBenchmarkScenario,
 } from "./draw-duel-ai-benchmark-fixtures.js";
 import {
+  renderDrawDuelNormalizedSnapshot,
   renderDrawDuelSnapshot,
   renderDrawDuelStrokeSequence,
   type DrawDuelRecordedStroke,
 } from "./draw-duel-snapshot-renderer.js";
+import { drawDuelWordBank } from "./draw-duel-word-bank.js";
 import { loadRootEnvFile } from "./env-file.js";
 import {
   OpenAIVisionAIGuesser,
@@ -24,11 +28,13 @@ type BenchmarkFailureKind = "error" | "timeout";
 type BenchmarkSampleResult = {
   category: DrawDuelBenchmarkCategory;
   candidateCorrect: boolean;
+  countsTowardAccuracy: boolean;
   correct: boolean;
   failureKind?: BenchmarkFailureKind;
   frameCount: number;
   genericWrong: boolean;
   latencyMs?: number;
+  scenario: DrawDuelBenchmarkScenario;
   unknown: boolean;
   word: string;
 };
@@ -39,13 +45,25 @@ type CategorySummary = {
 };
 
 const benchmarkRoundStartedAtMs = 0;
-const benchmarkSampleLimit = 30;
-const emptyScoringContext: AIGuesserScoringContext = {
-  aliases: [],
-  candidateWords: [],
-  correctWord: "",
-};
+const defaultBenchmarkMinAccuracy = 0.8;
+const defaultScenarioThresholds = new Map<DrawDuelBenchmarkScenario, number>([
+  ["clear-human", 0.9],
+  ["messy-human", 0.75],
+  ["sparse-human", 0.75],
+  ["adversarial-label", 0.6],
+  ["adversarial-distractor", 0.6],
+  ["ambiguous-shape", 0.6],
+]);
 const genericWrongAnswers = new Set([
+  "animal",
+  "drawing",
+  "food",
+  "object",
+  "place",
+  "shape",
+  "sketch",
+  "thing",
+  "vehicle",
   "과일",
   "동물",
   "탈것",
@@ -90,8 +108,23 @@ function parseNumber(value: string | undefined, fallback: number): number {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+function parseOptionalNumber(value: string | undefined): number | undefined {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function parseRatio(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseFloat(value ?? "");
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(1, Math.max(0, parsed));
+}
+
 function parseDetail(value: string | undefined): OpenAIImageDetail {
-  return value === "auto" || value === "high" || value === "low" ? value : "high";
+  return value === "auto" || value === "high" || value === "low" ? value : "auto";
 }
 
 function percentile(values: number[], ratio: number): number {
@@ -130,6 +163,16 @@ function createBenchmarkRecordedStrokes(
   }));
 }
 
+function createBenchmarkScoringContext(
+  fixture: DrawDuelAIBenchmarkFixture,
+): AIGuesserScoringContext {
+  return {
+    aliases: [...fixture.aliases],
+    candidateWords: drawDuelWordBank.map((entry) => entry.word),
+    correctWord: fixture.word,
+  };
+}
+
 function isBenchmarkCandidateCorrect(
   output: { candidates?: { text: string }[] },
   fixture: DrawDuelAIBenchmarkFixture,
@@ -148,22 +191,26 @@ async function runSample(
 ): Promise<BenchmarkSampleResult> {
   const recordedStrokes = createBenchmarkRecordedStrokes(fixture.strokes);
   const finalImage = await renderDrawDuelSnapshot(fixture.strokes);
+  const normalizedFinalImage = await renderDrawDuelNormalizedSnapshot(fixture.strokes);
   const strokeSequence = await renderDrawDuelStrokeSequence(
     recordedStrokes,
     benchmarkRoundStartedAtMs,
   );
+  const scoringContext = createBenchmarkScoringContext(fixture);
   const startedAt = Date.now();
 
   try {
-    const output = await guesser.guess(
+    const rawOutput = await guesser.guess(
       {
         finalImage,
+        normalizedFinalImage,
         roomCode: `B${String(index + 1).padStart(5, "0")}`,
         roundId: `benchmark-${String(index + 1).padStart(2, "0")}`,
         strokeSequence,
       },
-      emptyScoringContext,
+      scoringContext,
     );
+    const output = postProcessAIGuesserOutput(rawOutput, scoringContext);
     const latencyMs = Date.now() - startedAt;
     const correct = isBenchmarkGuessCorrect(output.text, fixture);
     const unknown = isBenchmarkUnknown(output.text);
@@ -171,10 +218,12 @@ async function runSample(
     return {
       category: fixture.category,
       candidateCorrect: isBenchmarkCandidateCorrect(output, fixture),
+      countsTowardAccuracy: fixture.countsTowardAccuracy,
       correct,
       frameCount: strokeSequence.length,
       genericWrong: !correct && isGenericWrongAnswer(output.text),
       latencyMs,
+      scenario: fixture.scenario,
       unknown,
       word: fixture.word,
     };
@@ -182,10 +231,12 @@ async function runSample(
     return {
       category: fixture.category,
       candidateCorrect: false,
+      countsTowardAccuracy: fixture.countsTowardAccuracy,
       correct: false,
       failureKind: classifyFailure(error),
       frameCount: strokeSequence.length,
       genericWrong: false,
+      scenario: fixture.scenario,
       unknown: false,
       word: fixture.word,
     };
@@ -212,27 +263,72 @@ function summarizeCategories(results: BenchmarkSampleResult[]): Map<string, Cate
   return summaries;
 }
 
+function summarizeScenarios(results: BenchmarkSampleResult[]): Map<string, CategorySummary> {
+  const summaries = new Map<string, CategorySummary>();
+
+  for (const result of results) {
+    if (!result.countsTowardAccuracy) {
+      continue;
+    }
+
+    const current = summaries.get(result.scenario) ?? {
+      correct: 0,
+      total: 0,
+    };
+    current.total += 1;
+
+    if (result.correct) {
+      current.correct += 1;
+    }
+
+    summaries.set(result.scenario, current);
+  }
+
+  return summaries;
+}
+
+function scenarioThresholdFor(scenario: string): number | undefined {
+  if (scenario.startsWith("adversarial-")) {
+    return 0.6;
+  }
+
+  return defaultScenarioThresholds.get(scenario as DrawDuelBenchmarkScenario);
+}
+
+function ratio(part: number, total: number): number {
+  return total === 0 ? 0 : part / total;
+}
+
 function printSummary(
   results: BenchmarkSampleResult[],
   options: {
     detail: OpenAIImageDetail;
+    minAccuracy: number;
     model: string;
     retryLimit: number;
     timeoutMs: number;
   },
 ) {
   const total = results.length;
-  const correct = results.filter((result) => result.correct).length;
-  const candidateCorrect = results.filter((result) => result.candidateCorrect).length;
-  const unknown = results.filter((result) => result.unknown).length;
-  const timeout = results.filter((result) => result.failureKind === "timeout").length;
-  const error = results.filter((result) => result.failureKind === "error").length;
-  const wrong = results.filter((result) => !result.correct && !result.failureKind).length;
-  const genericWrong = results.filter((result) => result.genericWrong).length;
+  const scoredResults = results.filter((result) => result.countsTowardAccuracy);
+  const scoredTotal = scoredResults.length;
+  const excludedTotal = total - scoredTotal;
+  const correct = scoredResults.filter((result) => result.correct).length;
+  const candidateCorrect = scoredResults.filter(
+    (result) => result.candidateCorrect,
+  ).length;
+  const unknown = scoredResults.filter((result) => result.unknown).length;
+  const timeout = scoredResults.filter((result) => result.failureKind === "timeout").length;
+  const error = scoredResults.filter((result) => result.failureKind === "error").length;
+  const wrong = scoredResults.filter(
+    (result) => !result.correct && !result.failureKind,
+  ).length;
+  const genericWrong = scoredResults.filter((result) => result.genericWrong).length;
   const latencies = results
     .map((result) => result.latencyMs)
     .filter((latency): latency is number => typeof latency === "number");
-  const categories = summarizeCategories(results);
+  const categories = summarizeCategories(scoredResults);
+  const scenarios = summarizeScenarios(results);
   const averageFrameCount =
     total === 0
       ? 0
@@ -244,13 +340,15 @@ function printSummary(
   console.log(`Detail: ${options.detail}`);
   console.log(`Timeout: ${options.timeoutMs}ms`);
   console.log(`Samples: ${total}`);
+  console.log(`Scored samples: ${scoredTotal}`);
+  console.log(`Rule-violation samples excluded from accuracy: ${excludedTotal}`);
   console.log(`Average sequence frames: ${averageFrameCount.toFixed(1)}`);
   console.log(`Max attempts per sample: ${options.retryLimit + 1}`);
-  console.log(`Accuracy: ${percentage(correct, total)} (${correct}/${total})`);
+  console.log(`Top-1 accuracy: ${percentage(correct, scoredTotal)} (${correct}/${scoredTotal})`);
   console.log(
-    `Candidate-list contains answer: ${percentage(candidateCorrect, total)} (${candidateCorrect}/${total})`,
+    `Candidate-list contains answer: ${percentage(candidateCorrect, scoredTotal)} (${candidateCorrect}/${scoredTotal})`,
   );
-  console.log(`Unknown rate: ${percentage(unknown, total)} (${unknown}/${total})`);
+  console.log(`Unknown rate: ${percentage(unknown, scoredTotal)} (${unknown}/${scoredTotal})`);
   console.log(
     `Latency ms: p50=${percentile(latencies, 0.5)} p95=${percentile(latencies, 0.95)} max=${Math.max(0, ...latencies)}`,
   );
@@ -266,14 +364,63 @@ function printSummary(
     );
   }
 
-  if (timeout + error > total * 0.1) {
-    console.log("Recommendation: consider DRAW_DUEL_AI_TIMEOUT_MS=12000.");
+  console.log("Scenario accuracy:");
+
+  for (const [scenario, summary] of scenarios) {
+    const threshold = scenarioThresholdFor(scenario);
+    const suffix = threshold ? ` target>=${percentage(threshold, 1)}` : "";
+    console.log(
+      `- ${scenario}: ${percentage(summary.correct, summary.total)} (${summary.correct}/${summary.total})${suffix}`,
+    );
+  }
+
+  const failures: string[] = [];
+  const p95Latency = percentile(latencies, 0.95);
+  const timeoutErrorRate = ratio(timeout + error, scoredTotal);
+  const unknownRate = ratio(unknown, scoredTotal);
+
+  if (ratio(correct, scoredTotal) < options.minAccuracy) {
+    failures.push(
+      `Top-1 accuracy ${percentage(correct, scoredTotal)} is below ${percentage(options.minAccuracy, 1)}.`,
+    );
+  }
+
+  for (const [scenario, summary] of scenarios) {
+    const threshold = scenarioThresholdFor(scenario);
+
+    if (threshold !== undefined && ratio(summary.correct, summary.total) < threshold) {
+      failures.push(
+        `${scenario} accuracy ${percentage(summary.correct, summary.total)} is below ${percentage(threshold, 1)}.`,
+      );
+    }
+  }
+
+  if (p95Latency > 10_000) {
+    failures.push(`p95 latency ${p95Latency}ms is above 10000ms.`);
+  }
+
+  if (timeoutErrorRate > 0.05) {
+    failures.push(
+      `Timeout/error rate ${percentage(timeout + error, scoredTotal)} is above 5.0%.`,
+    );
+  }
+
+  if (unknownRate > 0.1) {
+    failures.push(`Unknown rate ${percentage(unknown, scoredTotal)} is above 10.0%.`);
+  }
+
+  if (timeout + error > scoredTotal * 0.05) {
+    console.log("Recommendation: inspect provider health before increasing timeout.");
   }
 
   if (wrong > 0 && genericWrong / wrong > 0.2) {
     console.log(
       "Recommendation: keep the prompt preference for specific concrete nouns enabled.",
     );
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Benchmark failed:\n${failures.join("\n")}`);
   }
 }
 
@@ -284,7 +431,7 @@ export async function runDrawDuelAIBenchmark() {
 
   if (provider !== "openai") {
     console.log(
-      "Draw Duel AI benchmark skipped: set DRAW_DUEL_AI_PROVIDER=openai in C:\\ai-arcade\\.env to run 30 paid OpenAI calls. No API calls were made.",
+      "Draw Duel AI benchmark skipped: set DRAW_DUEL_AI_PROVIDER=openai in C:\\ai-arcade\\.env to run paid OpenAI calls. No API calls were made.",
     );
     return;
   }
@@ -298,12 +445,16 @@ export async function runDrawDuelAIBenchmark() {
     return;
   }
 
-  const model = process.env.DRAW_DUEL_AI_MODEL?.trim() || "gpt-4.1";
+  const model = process.env.DRAW_DUEL_AI_MODEL?.trim() || "gpt-5";
   const detail = parseDetail(process.env.DRAW_DUEL_AI_DETAIL);
-  const timeoutMs = parseNumber(process.env.DRAW_DUEL_AI_TIMEOUT_MS, 8_000);
+  const timeoutMs = parseNumber(process.env.DRAW_DUEL_AI_TIMEOUT_MS, 10_000);
   const retryLimit = Math.min(
     3,
     Math.max(0, parseNumber(process.env.DRAW_DUEL_AI_RETRY_LIMIT, 0)),
+  );
+  const minAccuracy = parseRatio(
+    process.env.DRAW_DUEL_AI_BENCHMARK_MIN_ACCURACY,
+    defaultBenchmarkMinAccuracy,
   );
   const guesser = new OpenAIVisionAIGuesser({
     apiKey,
@@ -316,7 +467,11 @@ export async function runDrawDuelAIBenchmark() {
     retryLimit,
     timeoutMs,
   });
-  const fixtures = drawDuelAIBenchmarkFixtures.slice(0, benchmarkSampleLimit);
+  const sampleLimit = parseOptionalNumber(process.env.DRAW_DUEL_AI_BENCHMARK_SAMPLE_LIMIT);
+  const fixtures =
+    typeof sampleLimit === "number" && sampleLimit > 0
+      ? drawDuelAIBenchmarkFixtures.slice(0, sampleLimit)
+      : drawDuelAIBenchmarkFixtures;
   const results: BenchmarkSampleResult[] = [];
 
   for (const [index, fixture] of fixtures.entries()) {
@@ -325,6 +480,7 @@ export async function runDrawDuelAIBenchmark() {
 
   printSummary(results, {
     detail,
+    minAccuracy,
     model,
     retryLimit,
     timeoutMs,

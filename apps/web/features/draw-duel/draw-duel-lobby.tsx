@@ -53,7 +53,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
 import { DrawDuelBoard } from "./draw-duel-board";
@@ -225,6 +225,9 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const currentPlayerIdRef = useRef<string | null>(null);
   const roundIdRef = useRef<string | null>(null);
+  const qrModalCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const qrModalTriggerRef = useRef<HTMLButtonElement>(null);
+  const previousQrFocusRef = useRef<HTMLElement | null>(null);
 
   const [connectionStatus, setConnectionStatus] =
     useState<LobbyConnectionStatus>("connecting");
@@ -250,6 +253,21 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   const [isQrPanelOpen, setIsQrPanelOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
+  const openQrModal = useCallback(() => {
+    previousQrFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : qrModalTriggerRef.current;
+    setIsQrModalOpen(true);
+  }, []);
+
+  const closeQrModal = useCallback(() => {
+    setIsQrModalOpen(false);
+    window.setTimeout(() => {
+      previousQrFocusRef.current?.focus();
+    }, 0);
+  }, []);
+
   useEffect(() => {
     if (initialRoomCode) {
       setJoinRoomCode(initialRoomCode);
@@ -259,6 +277,23 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   useEffect(() => {
     currentPlayerIdRef.current = currentPlayerId;
   }, [currentPlayerId]);
+
+  useEffect(() => {
+    if (!isQrModalOpen) {
+      return;
+    }
+
+    qrModalCloseButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeQrModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeQrModal, isQrModalOpen]);
 
   useEffect(() => {
     if (!room || typeof window === "undefined") {
@@ -786,15 +821,15 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
 
   async function copyJoinUrl() {
     if (!joinUrl || typeof navigator === "undefined" || !navigator.clipboard) {
-      setCopyNotice("참가 URL을 직접 공유해 주세요.");
+      setCopyNotice("참가 링크를 직접 공유해 주세요.");
       return;
     }
 
     try {
       await navigator.clipboard.writeText(joinUrl);
-      setCopyNotice("참가 URL을 복사했습니다.");
+      setCopyNotice("참가 링크를 복사했습니다.");
     } catch {
-      setCopyNotice("참가 URL을 직접 공유해 주세요.");
+      setCopyNotice("참가 링크를 직접 공유해 주세요.");
     }
   }
 
@@ -1172,7 +1207,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
               >
                 <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
                   <div>
-                    <p className="font-arcade text-xs text-electric-cyan">Room Code</p>
+                    <p className="font-arcade text-xs text-electric-cyan">방 코드</p>
                     <h2 className="mt-1 font-arcade text-2xl text-coin-yellow sm:mt-2 sm:text-5xl">
                       {room.roomCode}
                     </h2>
@@ -1336,7 +1371,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                                 )}
                               </div>
                               <div className="min-w-0">
-                                <p className="font-arcade text-xs text-electric-cyan">참가 URL</p>
+                                <p className="font-arcade text-xs text-electric-cyan">참가 링크</p>
                                 <p className="mt-2 break-all text-sm font-bold leading-6 text-screen-white">
                                   {joinUrl}
                                 </p>
@@ -1352,7 +1387,8 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                                   <button
                                     className="arcade-button arcade-button-secondary"
                                     disabled={!qrDataUrl}
-                                    onClick={() => setIsQrModalOpen(true)}
+                                    onClick={openQrModal}
+                                    ref={qrModalTriggerRef}
                                     type="button"
                                   >
                                     <Maximize2 aria-hidden="true" size={18} />
@@ -1586,7 +1622,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                         </div>
                       </div>
                       <div className="arcade-badge arcade-badge-yellow min-h-12 px-4">
-                        Room Code&nbsp;<span className="font-arcade">{joinRoomCode}</span>
+                        방 코드&nbsp;<span className="font-arcade">{joinRoomCode}</span>
                       </div>
                     </div>
                     <label className="mt-5 block text-sm font-black" htmlFor="join-nickname">
@@ -1705,6 +1741,11 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
         <div
           aria-modal="true"
           className="fixed inset-0 z-50 grid place-items-center bg-console-black/85 px-4 py-6"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeQrModal();
+            }
+          }}
           role="dialog"
         >
           <div className="arcade-panel grid w-full max-w-lg gap-5 border-2 border-coin-yellow bg-panel-gray p-5 shadow-panel sm:p-6">
@@ -1721,7 +1762,8 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
               <button
                 aria-label="QR 모달 닫기"
                 className="arcade-button arcade-button-ghost h-12 w-12 p-0"
-                onClick={() => setIsQrModalOpen(false)}
+                onClick={closeQrModal}
+                ref={qrModalCloseButtonRef}
                 type="button"
               >
                 <X aria-hidden="true" size={20} />
@@ -1757,11 +1799,11 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                   type="button"
                 >
                   <Clipboard aria-hidden="true" size={18} />
-                  URL 복사
+                  링크 복사
                 </button>
                 <button
                   className="arcade-button arcade-button-ghost"
-                  onClick={() => setIsQrModalOpen(false)}
+                  onClick={closeQrModal}
                   type="button"
                 >
                   <X aria-hidden="true" size={18} />

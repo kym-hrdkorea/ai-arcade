@@ -11,8 +11,13 @@ const finalImage = {
   strokeCount: 3,
   width: 960,
 };
+const normalizedFinalImage = {
+  ...finalImage,
+  data: "data:image/png;base64,normalized-final",
+};
 const input: AIGuesserInput = {
   finalImage,
+  normalizedFinalImage,
   roomCode: "ABC123",
   roundId: "round-1",
   strokeSequence: [
@@ -100,7 +105,7 @@ function candidateResponse(text: string, confidence = 0.8) {
 }
 
 describe("OpenAIVisionAIGuesser", () => {
-  it("sends stroke sequence images before the final image without scoring answers", async () => {
+  it("sends stroke sequence images and normalized final image without scoring answers", async () => {
     const requestBodies: string[] = [];
     const guesser = new OpenAIVisionAIGuesser({
       apiKey: "test-key",
@@ -127,7 +132,7 @@ describe("OpenAIVisionAIGuesser", () => {
     expect(images.map((image) => image.image_url)).toEqual([
       "data:image/png;base64,seq1",
       "data:image/png;base64,seq2",
-      "data:image/png;base64,final",
+      "data:image/png;base64,normalized-final",
     ]);
     expect(images.every((image) => image.detail === "low")).toBe(true);
     expect(bodyText).toContain('"model":"gpt-4.1"');
@@ -161,7 +166,8 @@ describe("OpenAIVisionAIGuesser", () => {
     const result = await guesser.guess(input, scoringContext);
     const body = requestBodies[0] ?? "";
 
-    expect(body).toContain('"detail":"high"');
+    expect(body).toContain('"model":"gpt-5"');
+    expect(body).toContain('"detail":"auto"');
     expect(result.text).toHaveLength(40);
     expect(result.confidence).toBe(1);
   });

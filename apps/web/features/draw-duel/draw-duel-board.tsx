@@ -50,15 +50,15 @@ const localHistoryLimit = 500;
 const defaultColor = "#22d3ee";
 
 const colorOptions = [
-  defaultColor,
-  "#facc15",
-  "#ef4444",
-  "#22c55e",
-  "#111827",
-  "#3b82f6",
-  "#a855f7",
-  "#ec4899",
-  "#f97316",
+  { label: "하늘색", value: defaultColor },
+  { label: "노랑", value: "#facc15" },
+  { label: "빨강", value: "#ef4444" },
+  { label: "초록", value: "#22c55e" },
+  { label: "검정", value: "#111827" },
+  { label: "파랑", value: "#3b82f6" },
+  { label: "보라", value: "#a855f7" },
+  { label: "분홍", value: "#ec4899" },
+  { label: "주황", value: "#f97316" },
 ] as const;
 const widthOptions = [
   { label: "S", title: "얇게", value: 4 },
@@ -549,16 +549,16 @@ export function DrawDuelBoard({
           <div className="flex flex-wrap gap-1.5 sm:gap-2" aria-label="펜 색상">
             {colorOptions.map((option) => (
               <button
-                aria-label={`색상 ${option}`}
-                aria-pressed={color === option}
+                aria-label={option.label}
+                aria-pressed={color === option.value}
                 className={`h-11 w-11 border-2 shadow-pixel sm:h-12 sm:w-12 ${
-                  color === option ? "border-screen-white" : "border-line-gray"
+                  color === option.value ? "border-screen-white" : "border-line-gray"
                 }`}
                 disabled={tool === "eraser"}
-                key={option}
-                onClick={() => setColor(option)}
-                style={{ backgroundColor: option }}
-                title={`색상 ${option}`}
+                key={option.value}
+                onClick={() => setColor(option.value)}
+                style={{ backgroundColor: option.value }}
+                title={option.label}
                 type="button"
               />
             ))}

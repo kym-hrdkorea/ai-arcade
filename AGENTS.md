@@ -190,6 +190,24 @@ Draw Duel의 다음 핵심 Phase는 새 게임 추가보다 실제 그림 기반
 - 원본 이미지 저장, prompt/response 장기 보관, 외부 분석 서비스 전송은 별도 승인 없이 추가하지 않는다.
 - 실제 AI 연동 Phase 완료 전에는 Mock provider 기준 `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm e2e`가 통과해야 한다.
 
+## 5-2. Three Word Monster 추가 규칙
+
+두 번째 게임은 `three-word-monster`로 추가한다.
+
+- route는 `/games/three-word-monster`로 둔다.
+- Socket.IO 이벤트는 `three-word-monster:*` prefix만 사용한다.
+- Draw Duel의 `draw-duel:*` 이벤트, `RoomManager`, AI guesser, stroke renderer를 재사용하지 않는다.
+- 새 게임 서버 로직은 `three-word-monster-room-manager.ts` 같은 별도 manager와 handler로 분리한다.
+- 최대 참가자/팀은 10명이며, 개인 참가를 기본으로 하되 닉네임을 팀명처럼 사용할 수 있게 설계한다.
+- 상태는 `waiting`, `word-submission`, `image-generating`, `voting`, `revealing`, `result`를 사용한다.
+- 목표는 3개 단어 제출, 괴물 이미지 생성, 자기 것 제외 투표, 최다 득표 WINNER 발표다.
+- 기본 이미지 provider는 mock으로 두고, 실제 OpenAI 이미지 생성은 realtime-server의 서버 환경변수로만 켠다.
+- OpenAI API 키는 클라이언트에 절대 노출하지 않는다.
+- 모든 참가자의 이미지 사이즈, 스타일, 프롬프트 구조는 서버에서 동일하게 고정한다.
+- 생성 이미지는 v1에서 room memory에만 저장하고 장기 보관하지 않는다.
+- 선정적/노골적/저작권 캐릭터/로고/텍스트가 나오지 않도록 안전한 이미지 프롬프트를 서버에서 고정 적용한다.
+- 실제 provider 장애가 발생해도 mock fallback으로 라운드 진행, 투표, 결과 발표, 리셋이 깨지지 않아야 한다.
+
 ## 6. 실시간 통신 이벤트 규칙
 
 이벤트 이름은 `domain:action` 형식으로 작성한다.

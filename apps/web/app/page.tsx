@@ -19,16 +19,16 @@ export default function HomePage() {
             </div>
             <div className="flex flex-wrap gap-3">
               <div className="arcade-badge arcade-badge-green min-h-12 px-4">
-                SYSTEM READY
+                바로 플레이
               </div>
               <div className="arcade-badge arcade-badge-yellow min-h-12 px-4">
-                GAMES {games.length}
+                게임 {games.length}개
               </div>
             </div>
           </header>
 
-          <section className="grid flex-1 items-center gap-8 py-8 lg:grid-cols-[0.9fr_1.1fr] lg:py-10">
-            <div className="max-w-xl">
+          <section className="grid flex-1 items-start gap-6 py-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-8 lg:py-10">
+            <div className="order-2 max-w-xl lg:order-1">
               <p className="font-arcade text-sm text-pixel-blue">
                 Game Select
               </p>
@@ -56,7 +56,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="grid gap-5 md:grid-cols-2">
+            <div className="order-1 grid gap-4 md:grid-cols-2 lg:order-2 lg:gap-5">
               {games.map((game) => (
                 <GameCard game={game} key={game.id} />
               ))}

@@ -12,10 +12,21 @@ export type DrawDuelBenchmarkCategory =
   | "place"
   | "vehicle";
 
+export type DrawDuelBenchmarkScenario =
+  | "adversarial-distractor"
+  | "adversarial-label"
+  | "ambiguous-shape"
+  | "clear-human"
+  | "impossible-rule-violation"
+  | "messy-human"
+  | "sparse-human";
+
 export type DrawDuelAIBenchmarkFixture = {
   aliases: string[];
   category: DrawDuelBenchmarkCategory;
+  countsTowardAccuracy: boolean;
   id: string;
+  scenario: DrawDuelBenchmarkScenario;
   strokes: DrawStrokePayload[];
   word: string;
 };
@@ -82,6 +93,8 @@ function fixture(
   category: DrawDuelBenchmarkCategory,
   word: string,
   strokes: DrawStrokePayload[],
+  scenario: DrawDuelBenchmarkScenario = "clear-human",
+  countsTowardAccuracy = true,
 ): DrawDuelAIBenchmarkFixture {
   const entry = drawDuelWordBank.find((candidate) => candidate.word === word);
 
@@ -92,13 +105,15 @@ function fixture(
   return {
     aliases: [...entry.aliases],
     category,
+    countsTowardAccuracy,
     id,
+    scenario,
     strokes,
     word,
   };
 }
 
-export const drawDuelAIBenchmarkFixtures = [
+const clearDrawDuelAIBenchmarkFixtures = [
   fixture("animal-cat", "animal", "고양이", [
     stroke("cat-head", oval(470, 290, 100, 82)),
     stroke("cat-ear-left", [
@@ -575,4 +590,173 @@ export const drawDuelAIBenchmarkFixtures = [
       [585, 395],
     ], accentInk, 16),
   ]),
+] satisfies DrawDuelAIBenchmarkFixture[];
+
+function requireFixture(id: string): DrawDuelAIBenchmarkFixture {
+  const source = clearDrawDuelAIBenchmarkFixtures.find(
+    (candidate) => candidate.id === id,
+  );
+
+  if (!source) {
+    throw new Error(`Benchmark source fixture is missing: ${id}`);
+  }
+
+  return source;
+}
+
+function cloneStroke(
+  source: DrawStrokePayload,
+  strokeId: string,
+  transformPoint: (point: DrawPoint, index: number) => DrawPoint = (point) => ({
+    ...point,
+  }),
+): DrawStrokePayload {
+  return {
+    ...source,
+    strokeId,
+    points: source.points.map(transformPoint),
+  };
+}
+
+function jitterStrokes(
+  sourceId: string,
+  scenario: DrawDuelBenchmarkScenario,
+  id: string,
+): DrawDuelAIBenchmarkFixture {
+  const source = requireFixture(sourceId);
+  const strokes = source.strokes.map((sourceStroke, strokeIndex) =>
+    cloneStroke(sourceStroke, `${id}-${sourceStroke.strokeId}`, (sourcePoint, pointIndex) => {
+      const direction = pointIndex % 2 === 0 ? 1 : -1;
+      const offset = (strokeIndex % 3) * 5 + 6;
+
+      return {
+        ...sourcePoint,
+        x: sourcePoint.x + direction * offset,
+        y: sourcePoint.y + (pointIndex % 3 === 0 ? -offset : offset),
+      };
+    }),
+  );
+
+  strokes.push(
+    stroke(`${id}-stray-line-1`, line([210, 145], [310, 185]), accentInk, 7),
+    stroke(`${id}-stray-line-2`, line([690, 465], [755, 520]), blueInk, 7),
+  );
+
+  return {
+    ...source,
+    countsTowardAccuracy: true,
+    id,
+    scenario,
+    strokes,
+  };
+}
+
+function sparseFixture(
+  sourceId: string,
+  id: string,
+  strokeCount: number,
+): DrawDuelAIBenchmarkFixture {
+  const source = requireFixture(sourceId);
+
+  return {
+    ...source,
+    countsTowardAccuracy: true,
+    id,
+    scenario: "sparse-human",
+    strokes: source.strokes.slice(0, strokeCount),
+  };
+}
+
+function withExtraStrokes(
+  sourceId: string,
+  id: string,
+  scenario: DrawDuelBenchmarkScenario,
+  extraStrokes: DrawStrokePayload[],
+  countsTowardAccuracy = true,
+): DrawDuelAIBenchmarkFixture {
+  const source = requireFixture(sourceId);
+
+  return {
+    ...source,
+    countsTowardAccuracy,
+    id,
+    scenario,
+    strokes: [...source.strokes, ...extraStrokes],
+  };
+}
+
+function scaledDistractorStrokes(
+  sourceId: string,
+  id: string,
+  originX: number,
+  originY: number,
+  scale: number,
+): DrawStrokePayload[] {
+  const source = requireFixture(sourceId);
+
+  return source.strokes.slice(0, 3).map((sourceStroke) =>
+    cloneStroke(sourceStroke, `${id}-${sourceStroke.strokeId}`, (sourcePoint) => ({
+      ...sourcePoint,
+      x: originX + sourcePoint.x * scale,
+      y: originY + sourcePoint.y * scale,
+    })),
+  );
+}
+
+const adversarialLabelStrokes = [
+  stroke("bait-c", [
+    [685, 125],
+    [640, 125],
+    [620, 165],
+    [640, 205],
+    [685, 205],
+  ], darkInk, 9),
+  stroke("bait-a", [
+    [710, 205],
+    [735, 125],
+    [760, 205],
+    [722, 172],
+    [750, 172],
+  ], darkInk, 9),
+  stroke("bait-r", [
+    [785, 205],
+    [785, 125],
+    [830, 125],
+    [840, 165],
+    [785, 165],
+    [840, 205],
+  ], darkInk, 9),
+];
+
+export const drawDuelAIBenchmarkFixtures = [
+  ...clearDrawDuelAIBenchmarkFixtures,
+  sparseFixture("animal-cat", "sparse-cat-face", 3),
+  sparseFixture("vehicle-bike", "sparse-bike-frame", 3),
+  jitterStrokes("household-umbrella", "messy-human", "messy-umbrella"),
+  jitterStrokes("vehicle-car", "messy-human", "messy-car"),
+  withExtraStrokes(
+    "food-apple",
+    "adversarial-apple-with-car-label",
+    "adversarial-label",
+    adversarialLabelStrokes,
+  ),
+  withExtraStrokes(
+    "animal-fish",
+    "adversarial-fish-with-small-cat",
+    "adversarial-distractor",
+    scaledDistractorStrokes("animal-cat", "tiny-cat", 470, 115, 0.22),
+  ),
+  withExtraStrokes(
+    "place-house",
+    "ambiguous-house-outline",
+    "ambiguous-shape",
+    [stroke("ambiguous-house-extra-window", rect(385, 340, 45, 45), blueInk, 8)],
+  ),
+  {
+    ...requireFixture("animal-cat"),
+    countsTowardAccuracy: false,
+    id: "rule-violation-cat-drawn-as-car",
+    scenario: "impossible-rule-violation",
+    strokes: requireFixture("vehicle-car").strokes,
+  },
 ] satisfies DrawDuelAIBenchmarkFixture[];
