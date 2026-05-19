@@ -12,7 +12,7 @@ export const threeWordMonsterGame = {
   estimatedMinutes: 6,
   thumbnail: "/games/three-word-monster-thumbnail.svg",
   route: "/games/three-word-monster",
-  status: "draft",
+  status: "beta",
   tags: ["image-ai", "realtime", "party"],
   requiredCapabilities: ["realtime", "image-ai", "host-mode"],
   guide: {
@@ -30,7 +30,7 @@ export const threeWordMonsterGame = {
       {
         title: "괴물 이미지 생성",
         body: "서버가 같은 규칙과 스타일로 참가자별 괴물 이미지를 준비합니다.",
-        items: ["기본은 mock 이미지 provider", "모두 같은 크기와 스타일", "준비되면 갤러리 공개"],
+        items: ["모든 괴물은 같은 스타일", "참가자별 이미지 준비", "준비되면 갤러리 공개"],
       },
       {
         title: "자기 것 제외 투표",

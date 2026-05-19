@@ -26,6 +26,12 @@ import {
   type TickResult,
 } from "./room-manager.js";
 import { loadRootEnvFile } from "./env-file.js";
+import { RealOrAiRoomManager } from "./real-or-ai-room-manager.js";
+import { realOrAiRoundItems } from "./real-or-ai-round-items.generated.js";
+import {
+  createRealOrAiSocketRuntime,
+  registerRealOrAiHandlers,
+} from "./real-or-ai-socket-handlers.js";
 import { createMonsterImageGenerator } from "./three-word-monster-image-generator.js";
 import { ThreeWordMonsterRoomManager } from "./three-word-monster-room-manager.js";
 import { registerThreeWordMonsterHandlers } from "./three-word-monster-socket-handlers.js";
@@ -39,6 +45,8 @@ const port =
 const host = process.env.REALTIME_HOST?.trim() || fallbackHost;
 const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
 const roomManager = new RoomManager();
+const realOrAiRoomManager = new RealOrAiRoomManager(realOrAiRoundItems);
+const realOrAiSocketRuntime = createRealOrAiSocketRuntime();
 const threeWordMonsterRoomManager = new ThreeWordMonsterRoomManager(
   createMonsterImageGenerator(),
 );
@@ -105,6 +113,8 @@ const httpServer = createServer((request, response) => {
         ok: true,
         service: "ai-arcade-realtime-server",
         rooms: roomManager.getRoomCount(),
+        realOrAiPlayableRoundCount: realOrAiRoomManager.getPlayableRoundCount(),
+        realOrAiRooms: realOrAiRoomManager.getRoomCount(),
         threeWordMonsterRooms: threeWordMonsterRoomManager.getRoomCount(),
       }),
     );
@@ -400,6 +410,7 @@ function emitRoomResetResult(result: RoomResetResult) {
 }
 
 io.on("connection", (socket) => {
+  registerRealOrAiHandlers(io, socket, realOrAiRoomManager, realOrAiSocketRuntime);
   registerThreeWordMonsterHandlers(io, socket, threeWordMonsterRoomManager);
 
   socket.emit("server:ready", {

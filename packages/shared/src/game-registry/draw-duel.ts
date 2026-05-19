@@ -11,7 +11,7 @@ export const drawDuelGame = {
   estimatedMinutes: 8,
   thumbnail: "/games/draw-duel-thumbnail.svg",
   route: "/games/draw-duel",
-  status: "draft",
+  status: "beta",
   tags: ["drawing", "realtime", "ai-vs-human"],
   requiredCapabilities: ["realtime", "drawing", "chat", "image-ai"],
   guide: {
@@ -22,19 +22,19 @@ export const drawDuelGame = {
         items: ["닉네임만 입력하면 입장", "2명 이상이면 시작 가능", "호스트가 설정과 시작을 관리"],
       },
       {
-        title: "출제자는 그림 그리기",
-        body: "출제자에게만 제시어가 보이고, 제한 시간 동안 캔버스에 그림을 그립니다.",
-        items: ["펜, 지우개, 색상 사용", "모바일 터치와 마우스 지원", "제시어를 직접 쓰지 않기"],
+        title: "그리는 사람과 맞히는 사람",
+        body: "출제자에게만 제시어가 보이고, 나머지는 그림을 보며 정답을 입력합니다.",
+        items: ["마우스와 터치로 그림 그리기", "제시어는 그림 안에 직접 쓰지 않기", "역할은 설정에 따라 고정 또는 교대"],
       },
       {
-        title: "정답자는 답 입력",
-        body: "다른 참가자는 그림을 보며 채팅처럼 정답을 제출합니다.",
-        items: ["라운드 중 언제든 제출", "한 번 맞히면 제출 완료", "빠르게 맞힐수록 보너스 가능"],
+        title: "정답 입력",
+        body: "정답자는 떠오르는 답을 입력하고, 맞히면 라운드 점수를 얻습니다.",
+        items: ["라운드 중 제출 가능", "정답자는 빠르게 입력", "호스트는 필요하면 라운드 스킵"],
       },
       {
-        title: "AI도 함께 추측",
-        body: "AI가 라운드당 한 번 그림을 보고 답을 추측하며 사람 팀과 점수를 겨룹니다.",
-        items: ["사람 정답 +100점", "AI 정답 +100점", "누군가 맞히면 출제자도 점수 획득"],
+        title: "AI 추측",
+        body: "AI도 라운드당 한 번 그림을 보고 답을 추측합니다.",
+        items: ["결과 전까지 답은 숨김", "사람과 AI 점수를 함께 비교", "누군가 맞히면 출제자도 점수 획득"],
       },
       {
         title: "결과 확인",

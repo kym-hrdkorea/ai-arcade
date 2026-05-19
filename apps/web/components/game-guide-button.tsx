@@ -1,7 +1,7 @@
 "use client";
 
 import type { GameGuideSlide } from "@ai-arcade/shared";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, HelpCircle, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 type GameGuideButtonProps = {
@@ -68,7 +68,7 @@ export function GameGuideButton({ gameTitle, slides }: GameGuideButtonProps) {
         ref={triggerRef}
         type="button"
       >
-        ?
+        <HelpCircle aria-hidden="true" size={20} />
       </button>
 
       {isOpen ? (
@@ -107,7 +107,7 @@ export function GameGuideButton({ gameTitle, slides }: GameGuideButtonProps) {
                 <span className="arcade-badge arcade-badge-yellow">
                   {currentIndex + 1}/{slides.length}
                 </span>
-                <span className="arcade-badge arcade-badge-cyan">RULE</span>
+                <span className="arcade-badge arcade-badge-cyan">규칙</span>
               </div>
 
               <h3 className="mt-4 text-2xl font-black text-screen-white">{currentSlide.title}</h3>

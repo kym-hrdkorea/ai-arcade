@@ -1,0 +1,37 @@
+<svg width="960" height="600" viewBox="0 0 960 600" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Real or AI game screen</title>
+  <desc id="desc">A fixed-size arcade screen showing two photo candidates, a magnifier, and a real photo choice.</desc>
+  <rect width="960" height="600" fill="#0B1020"/>
+  <path d="M0 0h960v600H0z" fill="#101827"/>
+  <path d="M0 72h960M0 144h960M0 216h960M0 288h960M0 360h960M0 432h960M0 504h960M120 0v600M240 0v600M360 0v600M480 0v600M600 0v600M720 0v600M840 0v600" stroke="#334155" stroke-opacity=".42" stroke-width="2"/>
+
+  <rect x="64" y="52" width="832" height="496" rx="10" fill="#1E293B" stroke="#38BDF8" stroke-width="8"/>
+  <rect x="96" y="88" width="768" height="392" rx="6" fill="#0B1020" stroke="#FACC15" stroke-width="4"/>
+  <rect x="112" y="104" width="736" height="360" rx="4" fill="#101827" stroke="#334155" stroke-width="4"/>
+
+  <g font-family="Press Start 2P, Courier New, monospace" font-weight="900">
+    <text x="480" y="78" text-anchor="middle" font-size="30" fill="#F8FAFC">REAL OR AI</text>
+    <text x="480" y="524" text-anchor="middle" font-size="20" fill="#22D3EE">FIND THE REAL PHOTO</text>
+  </g>
+
+  <rect x="146" y="138" width="276" height="252" rx="8" fill="#F8FAFC" stroke="#38BDF8" stroke-width="8"/>
+  <rect x="538" y="138" width="276" height="252" rx="8" fill="#F8FAFC" stroke="#8B5CF6" stroke-width="8"/>
+  <path d="M168 336 232 270l48 46 54-72 70 92z" fill="#22C55E"/>
+  <path d="M560 336 626 260l58 58 42-50 70 68z" fill="#22C55E"/>
+  <circle cx="236" cy="210" r="32" fill="#FACC15"/>
+  <circle cx="630" cy="212" r="31" fill="#FACC15"/>
+  <path d="M184 190h82M184 226h46M576 192h86M576 230h42" stroke="#94A3B8" stroke-width="10" stroke-linecap="round" opacity=".62"/>
+  <path d="M704 184c40 18 56 54 48 108M694 212c20 11 28 30 24 54" fill="none" stroke="#EF4444" stroke-width="10" stroke-linecap="round"/>
+
+  <circle cx="480" cy="262" r="72" fill="#101827" stroke="#FACC15" stroke-width="8"/>
+  <path d="M530 314 598 382" stroke="#FACC15" stroke-width="18" stroke-linecap="round"/>
+  <path d="M444 262h72M480 226v72" stroke="#22D3EE" stroke-width="12" stroke-linecap="round"/>
+
+  <g font-family="Press Start 2P, Courier New, monospace" font-weight="900">
+    <rect x="206" y="410" width="156" height="44" rx="4" fill="#38BDF8"/>
+    <rect x="598" y="410" width="156" height="44" rx="4" fill="#8B5CF6"/>
+    <text x="284" y="440" text-anchor="middle" font-size="21" fill="#0B1020">A</text>
+    <text x="676" y="440" text-anchor="middle" font-size="21" fill="#F8FAFC">B</text>
+    <text x="480" y="428" text-anchor="middle" font-size="16" fill="#FACC15">2X</text>
+  </g>
+</svg>

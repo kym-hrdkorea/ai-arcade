@@ -10,9 +10,9 @@ type GameCardProps = {
 };
 
 const statusLabel: Record<GameModuleMeta["status"], string> = {
-  draft: "준비 중",
-  beta: "베타",
-  stable: "안정",
+  draft: "설계 중",
+  beta: "테스트 가능",
+  stable: "안정 운영",
 };
 
 export function GameCard({ game }: GameCardProps) {

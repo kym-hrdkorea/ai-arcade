@@ -382,7 +382,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
 
     socket.on("connect_error", () => {
       setConnectionStatus("error");
-      setErrorMessage("실시간 서버에 연결하지 못했습니다.");
+      setErrorMessage("게임 서버 연결을 확인해 주세요.");
     });
 
     socket.io.on("reconnect_attempt", () => {
@@ -618,7 +618,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
     const socket = socketRef.current;
 
     if (!socket || connectionStatus !== "connected") {
-      setErrorMessage("실시간 서버 연결을 확인해 주세요.");
+      setErrorMessage("게임 서버 연결을 확인해 주세요.");
       return;
     }
 
@@ -637,7 +637,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
     const socket = socketRef.current;
 
     if (!socket || connectionStatus !== "connected") {
-      setErrorMessage("실시간 서버 연결을 확인해 주세요.");
+      setErrorMessage("게임 서버 연결을 확인해 주세요.");
       return;
     }
 
@@ -946,7 +946,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
         {resultSlide === "showdown" ? (
           <div className="grid flex-1 place-items-center gap-6 text-center">
             <div>
-              <p className="font-arcade text-sm text-electric-cyan">SHOWDOWN</p>
+              <p className="font-arcade text-sm text-electric-cyan">승부 결과</p>
               <p className={`mt-4 text-5xl font-black sm:text-7xl ${winnerClass}`}>
                 {teamResult.winner}
               </p>
@@ -988,7 +988,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
         {resultSlide === "human-answers" ? (
           <div className="grid content-start gap-5">
             <div>
-              <p className="font-arcade text-xs text-electric-cyan">Human Answers</p>
+              <p className="font-arcade text-xs text-electric-cyan">참가자 답변</p>
               <h3 className="mt-2 text-3xl font-black text-screen-white">
                 참가자 답변
               </h3>
@@ -1105,7 +1105,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
             <Trophy aria-hidden="true" size={34} />
           </div>
           <div>
-            <p className="font-arcade text-xs text-electric-cyan">Final Result</p>
+            <p className="font-arcade text-xs text-electric-cyan">최종 결과</p>
             <h3 className={`mt-3 text-5xl font-black sm:text-7xl ${winnerClass}`}>
               {finalWinner}
             </h3>
@@ -1125,7 +1125,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
         <div className="grid gap-4 border border-line-gray bg-panel-gray p-4 sm:p-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="font-arcade text-xs text-electric-cyan">Human Ranking</p>
+              <p className="font-arcade text-xs text-electric-cyan">참가자 랭킹</p>
               <h3 className="mt-2 text-2xl font-black text-screen-white">
                 정답 랭킹
               </h3>

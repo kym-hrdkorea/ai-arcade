@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type * as RealOrAi from "./real-or-ai.js";
 import type * as ThreeWordMonster from "./three-word-monster.js";
 
 export const DRAW_DUEL_GAME_ID = "draw-duel";
@@ -370,6 +371,46 @@ export type ClientToServerEvents = {
     payload: ThreeWordMonster.ThreeWordMonsterRoomResetPayload,
     ack?: EventAck<ThreeWordMonster.ThreeWordMonsterRoomStatePayload>,
   ) => void;
+  "real-or-ai:room-create": (
+    payload: RealOrAi.RealOrAiRoomCreatePayload,
+    ack?: EventAck<RealOrAi.RealOrAiRoomJoinedPayload>,
+  ) => void;
+  "real-or-ai:room-join": (
+    payload: RealOrAi.RealOrAiRoomJoinPayload,
+    ack?: EventAck<RealOrAi.RealOrAiRoomJoinedPayload>,
+  ) => void;
+  "real-or-ai:room-rejoin": (
+    payload: RealOrAi.RealOrAiRoomRejoinPayload,
+    ack?: EventAck<RealOrAi.RealOrAiRoomJoinedPayload>,
+  ) => void;
+  "real-or-ai:room-leave": (
+    payload: RealOrAi.RealOrAiRoomLeavePayload,
+    ack?: EventAck<{ left: true }>,
+  ) => void;
+  "real-or-ai:settings-update": (
+    payload: RealOrAi.RealOrAiSettingsUpdatePayload,
+    ack?: EventAck<RealOrAi.RealOrAiRoomStatePayload>,
+  ) => void;
+  "real-or-ai:game-start": (
+    payload: RealOrAi.RealOrAiGameStartPayload,
+    ack?: EventAck<RealOrAi.RealOrAiGameStartNoticePayload>,
+  ) => void;
+  "real-or-ai:answer-submit": (
+    payload: RealOrAi.RealOrAiAnswerSubmitPayload,
+    ack?: EventAck<RealOrAi.RealOrAiAnswerAckPayload>,
+  ) => void;
+  "real-or-ai:next-round": (
+    payload: RealOrAi.RealOrAiNextRoundPayload,
+    ack?: EventAck<RealOrAi.RealOrAiCountdownPayload | RealOrAi.RealOrAiGameResultPayload>,
+  ) => void;
+  "real-or-ai:round-skip": (
+    payload: RealOrAi.RealOrAiRoundSkipPayload,
+    ack?: EventAck<RealOrAi.RealOrAiRoundResultPayload>,
+  ) => void;
+  "real-or-ai:room-reset": (
+    payload: RealOrAi.RealOrAiRoomResetPayload,
+    ack?: EventAck<RealOrAi.RealOrAiRoomStatePayload>,
+  ) => void;
 };
 
 export type ServerToClientEvents = {
@@ -407,6 +448,18 @@ export type ServerToClientEvents = {
     payload: ThreeWordMonster.ThreeWordMonsterResultPayload,
   ) => void;
   "three-word-monster:error": (payload: ErrorPayload) => void;
+  "real-or-ai:room-state": (payload: RealOrAi.RealOrAiRoomStatePayload) => void;
+  "real-or-ai:settings-updated": (
+    payload: RealOrAi.RealOrAiSettingsUpdatedPayload,
+  ) => void;
+  "real-or-ai:countdown": (payload: RealOrAi.RealOrAiCountdownPayload) => void;
+  "real-or-ai:round-start": (payload: RealOrAi.RealOrAiRoundStartPayload) => void;
+  "real-or-ai:answer-ack": (payload: RealOrAi.RealOrAiAnswerAckPayload) => void;
+  "real-or-ai:answer-count": (payload: RealOrAi.RealOrAiAnswerCountPayload) => void;
+  "real-or-ai:timer-tick": (payload: RealOrAi.RealOrAiTimerTickPayload) => void;
+  "real-or-ai:round-result": (payload: RealOrAi.RealOrAiRoundResultPayload) => void;
+  "real-or-ai:game-result": (payload: RealOrAi.RealOrAiGameResultPayload) => void;
+  "real-or-ai:error": (payload: ErrorPayload) => void;
   error: (payload: ErrorPayload) => void;
 };
 

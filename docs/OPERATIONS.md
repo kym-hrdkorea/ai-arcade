@@ -29,6 +29,23 @@ pnpm e2e
 LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smoke
 ```
 
+Real or AI 100명 한 방 스모크:
+
+PowerShell:
+
+```powershell
+$env:LOAD_SMOKE_GAME="real-or-ai"
+$env:LOAD_SMOKE_CLIENTS="100"
+$env:LOAD_SMOKE_ROOMS="1"
+pnpm --filter realtime-server load:smoke
+```
+
+macOS/Linux shell:
+
+```bash
+LOAD_SMOKE_GAME=real-or-ai LOAD_SMOKE_CLIENTS=100 LOAD_SMOKE_ROOMS=1 pnpm --filter realtime-server load:smoke
+```
+
 판단 기준:
 
 - 첫 외부 접속 성공은 `ngrok` 임시 공개로 확인한다.
@@ -270,6 +287,12 @@ LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smok
 LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smoke
 ```
 
+Real or AI 스모크:
+
+```bash
+LOAD_SMOKE_GAME=real-or-ai LOAD_SMOKE_CLIENTS=100 LOAD_SMOKE_ROOMS=1 pnpm --filter realtime-server load:smoke
+```
+
 이 결과는 행사 전 위험 확인용이다. 100명 운영 가능성을 단정하는 근거로 쓰지 않는다.
 
 ## 1. 행사 전 확인
@@ -393,6 +416,51 @@ AI 오류/timeout 수:
 다음 행사 전 수정 필요:
 ```
 
+## 10. Real or AI Final UX 운영 체크
+
+권장 설정:
+
+- 일반 최종 테스트: 보기 시간 45초
+- 긴 비교 게임: 보기 시간 60초
+- 빠른 회귀 테스트: 보기 시간 5초, 준비 시간 3초, 1라운드
+
+방장 운영 체크리스트:
+
+- 대기 상태에서만 라운드 수, 보기 시간, 준비 시간을 바꾼다.
+- 게임 시작 후 설정 요약이 잠금 상태로 보이는지 확인한다.
+- 운영 패널에서 현재 라운드, 남은 시간, 제출 인원이 읽히는지 확인한다.
+- 진행 중에는 라운드 스킵과 방 리셋만 필요한 순간에 사용한다.
+- 라운드 결과 후 다음 진행 버튼으로 다음 라운드 또는 최종 랭킹으로 넘어간다.
+- 방 리셋 뒤 방 코드와 설정은 유지되고 점수, 라운드, 제출 상태는 초기화되는지 확인한다.
+- 참가자 화면에 `mock`, `provider`, `asset phase` 같은 개발 용어가 보이지 않는지 확인한다.
+
+돋보기 QA:
+
+- 데스크톱에서 후보 이미지 위로 포인터를 움직이면 inline lens가 실제 이미지 영역만 확대한다.
+- 이미지 여백 영역에 포인터가 있을 때 lens가 잘못된 배경을 보여주지 않는다.
+- 확대 모달은 1x, 2x, 4x 전환이 되고 기본값은 2x다.
+- 2x/4x에서 드래그 pan이 동작하고 Escape 또는 닫기 버튼으로 닫힌다.
+- 확대 UI에 `sourceType`, `correctCandidateId` 같은 정답 메타데이터가 렌더링되지 않는다.
+
+모바일 확인 항목:
+
+- 후보 A/B 카드, 확대 버튼, 제출 버튼이 세로 화면에서 겹치지 않는다.
+- 터치 환경에서는 inline hover lens 대신 확대 버튼과 모달로 확인한다.
+- 확대 모달이 390px 너비 viewport 안에 들어오고 닫기 버튼에 접근할 수 있다.
+
+새 창 테스트 서버 재시작:
+
+```bash
+pnpm dev
+```
+
+E2E 전용 서버는 Playwright가 `playwright.config.ts`의 webServer 설정으로 재시작한다.
+
+```bash
+pnpm e2e -- e2e/ux-public-beta.spec.ts -g "Real or AI"
+pnpm e2e
+```
+
 ## 7. 파일럿 테스트 기준
 
 1차 테스트:
@@ -465,6 +533,16 @@ pnpm --filter realtime-server load:smoke
 - 방 생성/참가/게임 시작
 - 일부 stroke/guess 이벤트 송신
 
+Real or AI 시나리오:
+
+- `LOAD_SMOKE_GAME=real-or-ai`
+- 100 clients
+- 1 room
+- 방 생성/99명 참가/설정 1라운드/게임 시작
+- countdown 이후 후보 public payload 수신
+- 100명 answer submit
+- round result 수신과 event error 확인
+
 기록 기준:
 
 - 평균 연결 성공률
@@ -507,6 +585,19 @@ Rooms created: 5
 Rooms started: 5
 Event errors: 0
 Elapsed: 266ms
+
+2026-05-19 Real or AI Phase 7 로컬 스모크
+Target: http://127.0.0.1:4207
+Requested clients: 100
+Requested rooms: 1
+Connected clients: 100
+Connection success rate: 100.0%
+Rooms created: 1
+Rooms started: 1
+Answer submissions: 100
+Event errors: 0
+Elapsed: 4199ms
+Note: 100명 운영 보장이 아니라 로컬 단일 프로세스 기준 스모크 결과로만 기록한다.
 ```
 
 ## 9. Phase 7 실제 OpenAI Vision 리허설

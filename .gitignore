@@ -9,3 +9,6 @@ coverage
 *.log
 pnpm-debug.log*
 *.tsbuildinfo
+/real_images/
+/ai_images/
+/tmp/

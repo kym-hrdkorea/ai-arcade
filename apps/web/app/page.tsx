@@ -1,22 +1,15 @@
 import { games } from "@ai-arcade/shared";
 
-import { GameCard } from "@/components/game-card";
-import { HubActions } from "@/components/hub-actions";
+import { ArcadeLogo } from "@/components/arcade-logo";
+import { HubPlayConsole } from "@/components/hub-play-console";
 
 export default function HomePage() {
   return (
     <main className="min-h-screen overflow-hidden bg-console-black text-screen-white">
       <div className="screen-grid min-h-screen">
-        <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-6 sm:px-8 lg:px-10">
-          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-line-gray/80 pb-5">
-            <div>
-              <p className="font-arcade text-xs uppercase text-electric-cyan">
-                Insert Coin
-              </p>
-              <h1 className="mt-2 font-arcade text-3xl leading-tight text-coin-yellow sm:text-5xl">
-                AI Arcade
-              </h1>
-            </div>
+        <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-4 sm:px-8 sm:py-6 lg:px-10">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line-gray/80 pb-4 sm:gap-4 sm:pb-5">
+            <ArcadeLogo />
             <div className="flex flex-wrap gap-3">
               <div className="arcade-badge arcade-badge-green min-h-12 px-4">
                 바로 플레이
@@ -27,43 +20,36 @@ export default function HomePage() {
             </div>
           </header>
 
-          <section className="grid flex-1 items-start gap-6 py-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:gap-8 lg:py-10">
-            <div className="order-2 max-w-xl lg:order-1">
-              <p className="font-arcade text-sm text-pixel-blue">
-                Game Select
-              </p>
-              <h2 className="mt-4 text-3xl font-black leading-tight text-screen-white sm:text-5xl">
-                오늘의 AI 게임을 선택하세요
-              </h2>
-              <p className="mt-5 text-lg leading-8 text-muted-gray">
-                여러 명이 동시에 접속해 즐기는 AI 레크리에이션 허브입니다.
-                첫 게임은 사람이 그림을 그리고, 사람과 AI가 함께 정답을
-                맞히는 대결입니다.
-              </p>
-              <div className="mt-7 grid grid-cols-3 gap-3 text-center text-sm">
-                <div className="arcade-meter">
+          <section className="grid gap-4 py-4 lg:py-8">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <div>
+                <p className="font-arcade text-xs text-pixel-blue">게임 선택</p>
+                <h2 className="mt-2 text-2xl font-black leading-tight text-screen-white sm:mt-3 sm:text-5xl">
+                  플레이할 게임을 고르세요
+                </h2>
+                <p className="mt-3 hidden max-w-3xl text-sm leading-6 text-muted-gray sm:mt-4 sm:block sm:text-lg sm:leading-8">
+                  방 코드와 QR로 바로 입장하는 실시간 AI 레크리에이션 허브입니다.
+                  화살표로 게임을 넘기고, 원하는 게임의 로비를 시작하세요.
+                </p>
+              </div>
+              <div className="hidden grid-cols-3 gap-2 text-center text-xs sm:grid sm:min-w-[360px] sm:text-sm">
+                <div className="arcade-meter min-h-14 sm:min-h-16">
                   <strong>{games.length}</strong>
                   <span>게임</span>
                 </div>
-                <div className="arcade-meter">
-                  <strong>MVP</strong>
-                  <span>허브</span>
+                <div className="arcade-meter min-h-14 sm:min-h-16">
+                  <strong>LIVE</strong>
+                  <span>실시간</span>
                 </div>
-                <div className="arcade-meter">
-                  <strong>TEST</strong>
-                  <span>부하 확인</span>
+                <div className="arcade-meter min-h-14 sm:min-h-16">
+                  <strong>QR</strong>
+                  <span>입장</span>
                 </div>
               </div>
             </div>
 
-            <div className="order-1 grid gap-4 md:grid-cols-2 lg:order-2 lg:gap-5">
-              {games.map((game) => (
-                <GameCard game={game} key={game.id} />
-              ))}
-            </div>
+            <HubPlayConsole games={games} />
           </section>
-
-          <HubActions games={games} />
         </div>
       </div>
     </main>

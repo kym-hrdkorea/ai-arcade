@@ -1,19 +1,26 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import type {
+  ClientToServerEvents,
   DrawDuelGuessLogPayload,
   DrawDuelRoundStatePayload,
   DrawStrokePayload,
   EventAck,
   EventResponse,
+  RealOrAiAnswerAckPayload,
+  RealOrAiGameStartNoticePayload,
+  RealOrAiRoomJoinedPayload,
+  RealOrAiRoomStatePayload,
+  RealOrAiRoundResultPayload,
+  RealOrAiRoundStartPayload,
   RoomJoinedPayload,
   ServerToClientEvents,
-  ClientToServerEvents,
 } from "@ai-arcade/shared";
 import { DRAW_DUEL_GAME_ID } from "@ai-arcade/shared";
 import { io, type Socket } from "socket.io-client";
 
 type LoadSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+type SmokeGame = "draw-duel" | "real-or-ai";
 
 type LoadPlayer = {
   nickname: string;
@@ -30,6 +37,7 @@ type LoadRoom = {
 };
 
 type SmokeStats = {
+  answerSubmissions: number;
   connectionFailures: number;
   connectedClients: number;
   eventErrors: number;
@@ -38,10 +46,23 @@ type SmokeStats = {
 };
 
 const targetUrl = process.env.LOAD_SMOKE_URL ?? "http://localhost:4000";
+const smokeGame: SmokeGame =
+  process.env.LOAD_SMOKE_GAME === "real-or-ai" ? "real-or-ai" : "draw-duel";
 const requestedClients = parsePositiveInteger(process.env.LOAD_SMOKE_CLIENTS, 100);
-const requestedRooms = parsePositiveInteger(process.env.LOAD_SMOKE_ROOMS, 10);
-const connectTimeoutMs = parsePositiveInteger(process.env.LOAD_SMOKE_CONNECT_TIMEOUT_MS, 5_000);
+const requestedRooms = parsePositiveInteger(
+  process.env.LOAD_SMOKE_ROOMS,
+  smokeGame === "real-or-ai" ? 1 : 10,
+);
+const connectTimeoutMs = parsePositiveInteger(
+  process.env.LOAD_SMOKE_CONNECT_TIMEOUT_MS,
+  5_000,
+);
 const ackTimeoutMs = parsePositiveInteger(process.env.LOAD_SMOKE_ACK_TIMEOUT_MS, 5_000);
+const eventTimeoutMs = parsePositiveInteger(
+  process.env.LOAD_SMOKE_EVENT_TIMEOUT_MS,
+  15_000,
+);
+const maxRealOrAiPlayersPerRoom = 100;
 
 function parsePositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -92,7 +113,7 @@ function waitForAck<T>(emit: (ack: EventAck<T>) => void, label: string) {
   });
 }
 
-function createRoom(socket: LoadSocket, nickname: string) {
+function createDrawDuelRoom(socket: LoadSocket, nickname: string) {
   return waitForAck<RoomJoinedPayload>(
     (ack) =>
       socket.emit(
@@ -107,7 +128,7 @@ function createRoom(socket: LoadSocket, nickname: string) {
   );
 }
 
-function joinRoom(socket: LoadSocket, roomCode: string, nickname: string) {
+function joinDrawDuelRoom(socket: LoadSocket, roomCode: string, nickname: string) {
   return waitForAck<RoomJoinedPayload>(
     (ack) =>
       socket.emit(
@@ -122,7 +143,7 @@ function joinRoom(socket: LoadSocket, roomCode: string, nickname: string) {
   );
 }
 
-function startGame(socket: LoadSocket, roomCode: string) {
+function startDrawDuelGame(socket: LoadSocket, roomCode: string) {
   return waitForAck(
     (ack) =>
       socket.emit(
@@ -158,12 +179,12 @@ function submitGuess(
   );
 }
 
-function waitForRoundState(socket: LoadSocket, roomCode: string) {
+function waitForDrawDuelRoundState(socket: LoadSocket, roomCode: string) {
   return new Promise<DrawDuelRoundStatePayload>((resolve, reject) => {
     const timer = setTimeout(() => {
       socket.off("draw-duel:round-state", handleRoundState);
       reject(new Error(`round state timeout for ${roomCode}`));
-    }, ackTimeoutMs);
+    }, eventTimeoutMs);
 
     function handleRoundState(payload: DrawDuelRoundStatePayload) {
       if (payload.roomCode !== roomCode) {
@@ -179,6 +200,122 @@ function waitForRoundState(socket: LoadSocket, roomCode: string) {
   });
 }
 
+function createRealOrAiRoom(socket: LoadSocket, nickname: string) {
+  return waitForAck<RealOrAiRoomJoinedPayload>(
+    (ack) =>
+      socket.emit(
+        "real-or-ai:room-create",
+        {
+          nickname,
+        },
+        ack,
+      ),
+    "real-or-ai:room-create",
+  );
+}
+
+function joinRealOrAiRoom(socket: LoadSocket, roomCode: string, nickname: string) {
+  return waitForAck<RealOrAiRoomJoinedPayload>(
+    (ack) =>
+      socket.emit(
+        "real-or-ai:room-join",
+        {
+          nickname,
+          roomCode,
+        },
+        ack,
+      ),
+    "real-or-ai:room-join",
+  );
+}
+
+function updateRealOrAiSettings(socket: LoadSocket, roomCode: string) {
+  return waitForAck<RealOrAiRoomStatePayload>(
+    (ack) =>
+      socket.emit(
+        "real-or-ai:settings-update",
+        {
+          roomCode,
+          settings: {
+            answerLockMode: "first-submit",
+            countdownSeconds: 3,
+            roundCount: 1,
+            roundDurationSeconds: 5,
+            shuffleMode: "random",
+          },
+        },
+        ack,
+      ),
+    "real-or-ai:settings-update",
+  );
+}
+
+function startRealOrAiGame(socket: LoadSocket, roomCode: string) {
+  return waitForAck<RealOrAiGameStartNoticePayload>(
+    (ack) =>
+      socket.emit(
+        "real-or-ai:game-start",
+        {
+          roomCode,
+        },
+        ack,
+      ),
+    "real-or-ai:game-start",
+  );
+}
+
+function submitRealOrAiAnswer(
+  socket: LoadSocket,
+  payload: Parameters<ClientToServerEvents["real-or-ai:answer-submit"]>[0],
+) {
+  return waitForAck<RealOrAiAnswerAckPayload>(
+    (ack) => socket.emit("real-or-ai:answer-submit", payload, ack),
+    "real-or-ai:answer-submit",
+  );
+}
+
+function waitForRealOrAiRoundStart(socket: LoadSocket, roomCode: string) {
+  return new Promise<RealOrAiRoundStartPayload>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off("real-or-ai:round-start", handleRoundStart);
+      reject(new Error(`real-or-ai round start timeout for ${roomCode}`));
+    }, eventTimeoutMs);
+
+    function handleRoundStart(payload: RealOrAiRoundStartPayload) {
+      if (payload.roomCode !== roomCode) {
+        return;
+      }
+
+      clearTimeout(timer);
+      socket.off("real-or-ai:round-start", handleRoundStart);
+      resolve(payload);
+    }
+
+    socket.on("real-or-ai:round-start", handleRoundStart);
+  });
+}
+
+function waitForRealOrAiRoundResult(socket: LoadSocket, roomCode: string) {
+  return new Promise<RealOrAiRoundResultPayload>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off("real-or-ai:round-result", handleRoundResult);
+      reject(new Error(`real-or-ai round result timeout for ${roomCode}`));
+    }, eventTimeoutMs);
+
+    function handleRoundResult(payload: RealOrAiRoundResultPayload) {
+      if (payload.roomCode !== roomCode) {
+        return;
+      }
+
+      clearTimeout(timer);
+      socket.off("real-or-ai:round-result", handleRoundResult);
+      resolve(payload);
+    }
+
+    socket.on("real-or-ai:round-result", handleRoundResult);
+  });
+}
+
 function toLoadPlayer(socket: LoadSocket, nickname: string, payload: RoomJoinedPayload): LoadPlayer {
   return {
     nickname,
@@ -189,23 +326,31 @@ function toLoadPlayer(socket: LoadSocket, nickname: string, payload: RoomJoinedP
   };
 }
 
-async function main() {
-  const startedAt = Date.now();
-  const stats: SmokeStats = {
-    connectionFailures: 0,
-    connectedClients: 0,
-    eventErrors: 0,
-    roomsCreated: 0,
-    roomsStarted: 0,
+function toRealOrAiLoadPlayer(
+  socket: LoadSocket,
+  nickname: string,
+  payload: RealOrAiRoomJoinedPayload,
+): LoadPlayer {
+  return {
+    nickname,
+    playerId: payload.currentPlayerId,
+    reconnectToken: payload.reconnectToken,
+    roomCode: payload.room.roomCode,
+    socket,
   };
-  const errors: string[] = [];
-  const sockets: LoadSocket[] = [];
+}
 
+async function connectSockets(stats: SmokeStats, errors: string[]) {
+  const sockets: LoadSocket[] = [];
   const socketResults = await Promise.all(
     Array.from({ length: requestedClients }, async (_, index) => {
       try {
         const socket = await createSocket(index + 1);
         socket.on("error", (payload) => {
+          stats.eventErrors += 1;
+          errors.push(`${payload.code}: ${payload.message}`);
+        });
+        socket.on("real-or-ai:error", (payload) => {
           stats.eventErrors += 1;
           errors.push(`${payload.code}: ${payload.message}`);
         });
@@ -226,6 +371,10 @@ async function main() {
 
   stats.connectedClients = sockets.length;
 
+  return sockets;
+}
+
+async function runDrawDuelSmoke(sockets: LoadSocket[], stats: SmokeStats, errors: string[]) {
   if (sockets.length < requestedRooms) {
     throw new Error("not enough connected clients to create requested rooms");
   }
@@ -242,7 +391,7 @@ async function main() {
     }
 
     const nickname = `Host${String(roomIndex + 1).padStart(2, "0")}`;
-    const joined = await createRoom(socket, nickname);
+    const joined = await createDrawDuelRoom(socket, nickname);
     const host = toLoadPlayer(socket, nickname, joined);
     rooms.push({
       host,
@@ -261,7 +410,7 @@ async function main() {
     }
 
     const nickname = `Guest${String(index + 1).padStart(3, "0")}`;
-    const joined = await joinRoom(socket, room.roomCode, nickname);
+    const joined = await joinDrawDuelRoom(socket, room.roomCode, nickname);
     room.players.push(toLoadPlayer(socket, nickname, joined));
   }
 
@@ -270,31 +419,31 @@ async function main() {
       continue;
     }
 
-    const roundStatePromise = waitForRoundState(room.host.socket, room.roomCode);
-    await startGame(room.host.socket, room.roomCode);
+    const roundStatePromise = waitForDrawDuelRoundState(room.host.socket, room.roomCode);
+    await startDrawDuelGame(room.host.socket, room.roomCode);
     const roundState = await roundStatePromise;
     stats.roomsStarted += 1;
 
     await submitStroke(room.host.socket, {
-      roomCode: room.roomCode,
-      strokeId: `smoke-${room.roomCode}`,
+      color: "#22d3ee",
+      isComplete: true,
       playerId: roundState.round.drawerPlayerId,
       points: [
         {
+          t: 1,
           x: 80,
           y: 90,
-          t: 1,
         },
         {
+          t: 2,
           x: 240,
           y: 180,
-          t: 2,
         },
       ],
-      color: "#22d3ee",
-      width: 8,
+      roomCode: room.roomCode,
+      strokeId: `smoke-${room.roomCode}`,
       tool: "pen",
-      isComplete: true,
+      width: 8,
     });
 
     const guessers = room.players
@@ -304,32 +453,133 @@ async function main() {
     await Promise.all(
       guessers.map((player, guessIndex) =>
         submitGuess(player.socket, {
+          playerId: player.playerId,
           roomCode: room.roomCode,
           roundId: roundState.round.roundId,
-          playerId: player.playerId,
-          text: guessIndex === 0 ? "사과" : "테스트",
-        }).catch((error: unknown) => {
-          stats.eventErrors += 1;
-          errors.push(error instanceof Error ? error.message : "unknown guess error");
-        }),
+          text: guessIndex === 0 ? "apple" : "test",
+        })
+          .then(() => {
+            stats.answerSubmissions += 1;
+          })
+          .catch((error: unknown) => {
+            stats.eventErrors += 1;
+            errors.push(error instanceof Error ? error.message : "unknown guess error");
+          }),
       ),
     );
 
     await delay(20);
   }
+}
 
-  sockets.forEach((socket) => socket.disconnect());
+async function runRealOrAiSmoke(sockets: LoadSocket[], stats: SmokeStats, errors: string[]) {
+  if (sockets.length < requestedRooms) {
+    throw new Error("not enough connected clients to create requested rooms");
+  }
 
+  const rooms: LoadRoom[] = [];
+  const hostSockets = sockets.slice(0, requestedRooms);
+  const guestSockets = sockets.slice(requestedRooms);
+
+  for (let roomIndex = 0; roomIndex < hostSockets.length; roomIndex += 1) {
+    const socket = hostSockets[roomIndex];
+
+    if (!socket) {
+      continue;
+    }
+
+    const nickname = `RealHost${String(roomIndex + 1).padStart(2, "0")}`;
+    const joined = await createRealOrAiRoom(socket, nickname);
+    const host = toRealOrAiLoadPlayer(socket, nickname, joined);
+    rooms.push({
+      host,
+      players: [host],
+      roomCode: joined.room.roomCode,
+    });
+    stats.roomsCreated += 1;
+  }
+
+  for (let index = 0; index < guestSockets.length; index += 1) {
+    const socket = guestSockets[index];
+
+    if (!socket) {
+      continue;
+    }
+
+    const room =
+      rooms.find((candidate) => candidate.players.length < maxRealOrAiPlayersPerRoom) ??
+      rooms[index % rooms.length];
+
+    if (!room || room.players.length >= maxRealOrAiPlayersPerRoom) {
+      continue;
+    }
+
+    const nickname = `RealGuest${String(index + 1).padStart(3, "0")}`;
+    const joined = await joinRealOrAiRoom(socket, room.roomCode, nickname);
+    room.players.push(toRealOrAiLoadPlayer(socket, nickname, joined));
+  }
+
+  for (const room of rooms) {
+    if (room.players.length < 2) {
+      continue;
+    }
+
+    await updateRealOrAiSettings(room.host.socket, room.roomCode);
+    const roundStartPromise = waitForRealOrAiRoundStart(room.host.socket, room.roomCode);
+    await startRealOrAiGame(room.host.socket, room.roomCode);
+    const roundStart = await roundStartPromise;
+    stats.roomsStarted += 1;
+
+    const selectedCandidateId = roundStart.round.item.candidates[0]?.id;
+
+    if (!selectedCandidateId) {
+      throw new Error(`real-or-ai missing candidate for ${room.roomCode}`);
+    }
+
+    const roundResultPromise = waitForRealOrAiRoundResult(room.host.socket, room.roomCode);
+    await Promise.all(
+      room.players.map((player) =>
+        submitRealOrAiAnswer(player.socket, {
+          playerId: player.playerId,
+          roomCode: room.roomCode,
+          roundId: roundStart.round.roundId,
+          selectedCandidateId,
+        })
+          .then(() => {
+            stats.answerSubmissions += 1;
+          })
+          .catch((error: unknown) => {
+            stats.eventErrors += 1;
+            errors.push(error instanceof Error ? error.message : "unknown answer error");
+          }),
+      ),
+    );
+
+    const result = await roundResultPromise;
+
+    if (result.entries.length !== room.players.length) {
+      stats.eventErrors += 1;
+      errors.push(
+        `real-or-ai ${room.roomCode} result entries ${result.entries.length}/${room.players.length}`,
+      );
+    }
+  }
+}
+
+function printSummary(startedAt: number, stats: SmokeStats, errors: string[]) {
   const elapsedMs = Date.now() - startedAt;
-  const successRate = requestedClients === 0 ? 0 : (stats.connectedClients / requestedClients) * 100;
+  const successRate =
+    requestedClients === 0 ? 0 : (stats.connectedClients / requestedClients) * 100;
   const summary = [
-    "Draw Duel load smoke result",
+    `${smokeGame === "real-or-ai" ? "Real or AI" : "Draw Duel"} load smoke result`,
     `Target: ${targetUrl}`,
     `Requested clients: ${requestedClients}`,
+    `Requested rooms: ${requestedRooms}`,
     `Connected clients: ${stats.connectedClients}`,
     `Connection success rate: ${successRate.toFixed(1)}%`,
     `Rooms created: ${stats.roomsCreated}`,
     `Rooms started: ${stats.roomsStarted}`,
+    `Answer submissions: ${stats.answerSubmissions}`,
     `Event errors: ${stats.eventErrors}`,
     `Elapsed: ${elapsedMs}ms`,
   ];
@@ -339,6 +589,32 @@ async function main() {
   if (errors.length > 0) {
     console.info(`First errors:\n${errors.slice(0, 8).join("\n")}`);
   }
+}
+
+async function main() {
+  const startedAt = Date.now();
+  const stats: SmokeStats = {
+    answerSubmissions: 0,
+    connectionFailures: 0,
+    connectedClients: 0,
+    eventErrors: 0,
+    roomsCreated: 0,
+    roomsStarted: 0,
+  };
+  const errors: string[] = [];
+  const sockets = await connectSockets(stats, errors);
+
+  try {
+    if (smokeGame === "real-or-ai") {
+      await runRealOrAiSmoke(sockets, stats, errors);
+    } else {
+      await runDrawDuelSmoke(sockets, stats, errors);
+    }
+  } finally {
+    sockets.forEach((socket) => socket.disconnect());
+  }
+
+  printSummary(startedAt, stats, errors);
 
   if (
     stats.connectionFailures > 0 ||

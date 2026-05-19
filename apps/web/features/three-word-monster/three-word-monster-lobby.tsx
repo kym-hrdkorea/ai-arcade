@@ -346,7 +346,7 @@ export function ThreeWordMonsterLobby({ entryMode = "full" }: ThreeWordMonsterLo
 
     socket.on("connect_error", () => {
       setConnectionStatus("error");
-      setErrorMessage("실시간 서버에 연결하지 못했습니다.");
+      setErrorMessage("게임 서버 연결을 확인해 주세요.");
     });
 
     socket.io.on("reconnect_attempt", () => {
@@ -460,7 +460,7 @@ export function ThreeWordMonsterLobby({ entryMode = "full" }: ThreeWordMonsterLo
     const socket = socketRef.current;
 
     if (!socket || connectionStatus !== "connected") {
-      setErrorMessage("실시간 서버 연결을 확인해 주세요.");
+      setErrorMessage("게임 서버 연결을 확인해 주세요.");
       return;
     }
 
@@ -478,7 +478,7 @@ export function ThreeWordMonsterLobby({ entryMode = "full" }: ThreeWordMonsterLo
     const socket = socketRef.current;
 
     if (!socket || connectionStatus !== "connected") {
-      setErrorMessage("실시간 서버 연결을 확인해 주세요.");
+      setErrorMessage("게임 서버 연결을 확인해 주세요.");
       return;
     }
 

@@ -9,13 +9,15 @@ type QuickJoinGame = Pick<GameModuleMeta, "id" | "route" | "title">;
 
 type HubActionsProps = {
   games: readonly QuickJoinGame[];
+  onSelectedGameIdChange?: (gameId: string) => void;
+  selectedGameId?: string;
 };
 
 const helpItems = [
   {
     icon: Ticket,
     title: "게임 선택",
-    body: "카드를 고르고 시작을 누르면 해당 게임 로비로 이동합니다.",
+    body: "셀렉터에서 게임을 고르고 시작을 누르면 해당 게임 로비로 이동합니다.",
   },
   {
     icon: Users,
@@ -39,15 +41,25 @@ const helpItems = [
   },
 ];
 
-export function HubActions({ games }: HubActionsProps) {
+export function HubActions({
+  games,
+  onSelectedGameIdChange,
+  selectedGameId,
+}: HubActionsProps) {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [roomCode, setRoomCode] = useState("");
-  const [selectedGameId, setSelectedGameId] = useState(games[0]?.id ?? "");
+  const [internalSelectedGameId, setInternalSelectedGameId] = useState(games[0]?.id ?? "");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const helpTriggerRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
-  const selectedGame = games.find((game) => game.id === selectedGameId) ?? games[0];
+  const currentSelectedGameId = selectedGameId ?? internalSelectedGameId;
+  const selectedGame = games.find((game) => game.id === currentSelectedGameId) ?? games[0];
   const canQuickJoin = Boolean(selectedGame && roomCode.length === 6);
+
+  function selectGame(gameId: string) {
+    setInternalSelectedGameId(gameId);
+    onSelectedGameIdChange?.(gameId);
+  }
 
   const openHelp = useCallback(() => {
     previousFocusRef.current =
@@ -91,20 +103,20 @@ export function HubActions({ games }: HubActionsProps) {
   }
 
   return (
-    <section className="grid gap-4 pb-6 lg:grid-cols-[1fr_auto]">
+    <section className="grid gap-4 lg:grid-cols-[1fr_auto]">
       <form
         aria-describedby="quick-join-status"
-        className="arcade-panel grid gap-4 p-4 sm:grid-cols-[minmax(180px,0.7fr)_1fr_auto]"
+        className="arcade-panel grid grid-cols-[minmax(0,1fr)_auto] gap-3 p-3 sm:grid-cols-[minmax(180px,0.7fr)_1fr_auto] sm:gap-4 sm:p-4"
         onSubmit={submitQuickJoin}
       >
-        <div>
+        <div className="order-1 sm:order-none">
           <label className="text-sm font-black text-screen-white" htmlFor="quick-join-game">
             게임
           </label>
           <select
             className="arcade-input mt-2"
             id="quick-join-game"
-            onChange={(event) => setSelectedGameId(event.target.value)}
+            onChange={(event) => selectGame(event.target.value)}
             value={selectedGame?.id ?? ""}
           >
             {games.map((game) => (
@@ -114,7 +126,7 @@ export function HubActions({ games }: HubActionsProps) {
             ))}
           </select>
         </div>
-        <div>
+        <div className="order-3 col-span-2 sm:order-none sm:col-span-1">
           <label className="text-sm font-black text-screen-white" htmlFor="room-code">
             방 코드
           </label>
@@ -130,12 +142,12 @@ export function HubActions({ games }: HubActionsProps) {
             type="text"
             value={roomCode}
           />
-          <p className="mt-2 text-sm text-muted-gray" id="quick-join-status">
+          <p className="mt-2 hidden text-sm text-muted-gray sm:block" id="quick-join-status">
             게임을 선택하고 방 코드를 입력하면 닉네임만 입력하는 참가 화면으로 이동합니다.
           </p>
         </div>
         <button
-          className="arcade-button arcade-button-secondary self-end"
+          className="arcade-button arcade-button-secondary order-2 self-end sm:order-none"
           disabled={!canQuickJoin}
           type="submit"
         >
