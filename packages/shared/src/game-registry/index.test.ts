@@ -7,6 +7,7 @@ describe("game registry", () => {
     expect(games).toContain(drawDuelGame);
     expect(drawDuelGame.id).toBe("draw-duel");
     expect(drawDuelGame.route).toBe("/games/draw-duel");
+    expect(drawDuelGame.maxPlayers).toBe(100);
   });
 
   it("registers real-or-ai with the expected route and capacity", () => {

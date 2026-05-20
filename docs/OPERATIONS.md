@@ -529,7 +529,7 @@ pnpm --filter realtime-server load:smoke
 
 - 100 clients
 - 10 rooms
-- room당 10명
+- Draw Duel room당 최대 100명
 - 방 생성/참가/게임 시작
 - 일부 stroke/guess 이벤트 송신
 

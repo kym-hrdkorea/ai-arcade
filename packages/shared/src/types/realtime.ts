@@ -5,7 +5,7 @@ import type * as RealOrAi from "./real-or-ai.js";
 export const DRAW_DUEL_GAME_ID = "draw-duel";
 export const ROOM_CODE_LENGTH = 6;
 export const ROOM_MIN_PLAYERS = 2;
-export const ROOM_MAX_PLAYERS = 10;
+export const ROOM_MAX_PLAYERS = 100;
 
 export type RoomStatus = "waiting" | "playing" | "ended";
 export type PlayerConnectionStatus = "connected" | "disconnected";
