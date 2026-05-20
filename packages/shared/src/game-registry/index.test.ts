@@ -1,19 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { drawDuelGame, games, realOrAiGame, threeWordMonsterGame } from "./index.js";
+import { drawDuelGame, games, realOrAiGame } from "./index.js";
 
 describe("game registry", () => {
   it("registers draw-duel with the expected route", () => {
     expect(games).toContain(drawDuelGame);
     expect(drawDuelGame.id).toBe("draw-duel");
     expect(drawDuelGame.route).toBe("/games/draw-duel");
-  });
-
-  it("registers three-word-monster with the expected route", () => {
-    expect(games).toContain(threeWordMonsterGame);
-    expect(threeWordMonsterGame.id).toBe("three-word-monster");
-    expect(threeWordMonsterGame.route).toBe("/games/three-word-monster");
-    expect(threeWordMonsterGame.maxPlayers).toBe(10);
   });
 
   it("registers real-or-ai with the expected route and capacity", () => {
@@ -38,8 +31,14 @@ describe("game registry", () => {
   it("marks current playable games as beta", () => {
     expect(games.map((game) => [game.id, game.status])).toEqual([
       ["draw-duel", "beta"],
-      ["three-word-monster", "beta"],
       ["real-or-ai", "beta"],
+    ]);
+  });
+
+  it("uses normalized arcade WebP thumbnails for the playable games", () => {
+    expect(games.map((game) => [game.id, game.thumbnail])).toEqual([
+      ["draw-duel", "/games/draw-duel-arcade.webp"],
+      ["real-or-ai", "/games/real-or-ai-arcade.webp"],
     ]);
   });
 

@@ -94,8 +94,11 @@ export function HubGameSelector({
           <GameGuideButton gameTitle={activeGame.title} slides={activeGame.guide.slides} />
         </div>
 
-        <div className="grid content-between gap-5 p-4 sm:p-6">
-          <div>
+        <div
+          className="grid min-h-[250px] content-between gap-5 overflow-hidden p-4 sm:min-h-[430px] sm:p-6 lg:min-h-0"
+          data-testid="hub-game-info"
+        >
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="arcade-badge arcade-badge-green">
                 {statusLabel[activeGame.status]}
@@ -105,15 +108,21 @@ export function HubGameSelector({
                 선택됨
               </span>
             </div>
-            <h2 className="mt-4 text-2xl font-black leading-tight text-coin-yellow sm:text-5xl">
+            <h2
+              className="mt-4 flex h-16 items-end overflow-hidden text-2xl font-black leading-tight text-coin-yellow sm:h-28 sm:text-5xl"
+              data-testid="hub-game-title"
+            >
               {activeGame.title}
             </h2>
-            <p className="mt-3 hidden text-sm leading-6 text-muted-gray sm:mt-4 sm:block sm:text-lg sm:leading-8">
+            <p
+              className="mt-3 hidden min-h-16 max-h-16 overflow-hidden text-sm leading-6 text-muted-gray sm:mt-4 sm:block sm:text-lg sm:leading-8"
+              data-testid="hub-game-description"
+            >
               {activeGame.shortDescription}
             </p>
           </div>
 
-          <div className="grid gap-4">
+          <div className="grid gap-4" data-testid="hub-game-actions">
             <div className="grid grid-cols-[48px_1fr_48px] items-center gap-3">
               <button
                 aria-label="이전 게임"
@@ -159,7 +168,7 @@ export function HubGameSelector({
               게임 시작
             </Link>
 
-            <div className="hidden flex-wrap gap-2 sm:flex">
+            <div className="hidden h-7 flex-wrap gap-2 overflow-hidden sm:flex">
               {activeGame.tags.map((tag) => (
                 <span className="arcade-badge" key={tag}>
                   #{tag}

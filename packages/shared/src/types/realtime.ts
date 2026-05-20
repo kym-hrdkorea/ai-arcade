@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import type * as RealOrAi from "./real-or-ai.js";
-import type * as ThreeWordMonster from "./three-word-monster.js";
 
 export const DRAW_DUEL_GAME_ID = "draw-duel";
 export const ROOM_CODE_LENGTH = 6;
@@ -339,38 +338,6 @@ export type ClientToServerEvents = {
     payload: DrawDuelSettingsUpdatePayload,
     ack?: EventAck<RoomStatePayload>,
   ) => void;
-  "three-word-monster:room-create": (
-    payload: ThreeWordMonster.ThreeWordMonsterRoomCreatePayload,
-    ack?: EventAck<ThreeWordMonster.ThreeWordMonsterRoomJoinedPayload>,
-  ) => void;
-  "three-word-monster:room-join": (
-    payload: ThreeWordMonster.ThreeWordMonsterRoomJoinPayload,
-    ack?: EventAck<ThreeWordMonster.ThreeWordMonsterRoomJoinedPayload>,
-  ) => void;
-  "three-word-monster:room-rejoin": (
-    payload: ThreeWordMonster.ThreeWordMonsterRoomRejoinPayload,
-    ack?: EventAck<ThreeWordMonster.ThreeWordMonsterRoomJoinedPayload>,
-  ) => void;
-  "three-word-monster:room-leave": (
-    payload: ThreeWordMonster.ThreeWordMonsterRoomLeavePayload,
-    ack?: EventAck<{ left: true }>,
-  ) => void;
-  "three-word-monster:game-start": (
-    payload: ThreeWordMonster.ThreeWordMonsterGameStartPayload,
-    ack?: EventAck<ThreeWordMonster.ThreeWordMonsterGameStartNoticePayload>,
-  ) => void;
-  "three-word-monster:words-submit": (
-    payload: ThreeWordMonster.ThreeWordMonsterWordsSubmitPayload,
-    ack?: EventAck<ThreeWordMonster.ThreeWordMonsterWordsSubmitResultPayload>,
-  ) => void;
-  "three-word-monster:vote-submit": (
-    payload: ThreeWordMonster.ThreeWordMonsterVoteSubmitPayload,
-    ack?: EventAck<ThreeWordMonster.ThreeWordMonsterVoteSubmittedPayload>,
-  ) => void;
-  "three-word-monster:room-reset": (
-    payload: ThreeWordMonster.ThreeWordMonsterRoomResetPayload,
-    ack?: EventAck<ThreeWordMonster.ThreeWordMonsterRoomStatePayload>,
-  ) => void;
   "real-or-ai:room-create": (
     payload: RealOrAi.RealOrAiRoomCreatePayload,
     ack?: EventAck<RealOrAi.RealOrAiRoomJoinedPayload>,
@@ -429,25 +396,6 @@ export type ServerToClientEvents = {
   "draw-duel:round-result": (payload: DrawDuelRoundResultPayload) => void;
   "draw-duel:result-slide-set": (payload: DrawDuelResultSlideSetPayload) => void;
   "draw-duel:game-result": (payload: DrawDuelGameResultPayload) => void;
-  "three-word-monster:room-state": (
-    payload: ThreeWordMonster.ThreeWordMonsterRoomStatePayload,
-  ) => void;
-  "three-word-monster:game-start": (
-    payload: ThreeWordMonster.ThreeWordMonsterGameStartNoticePayload,
-  ) => void;
-  "three-word-monster:image-ready": (
-    payload: ThreeWordMonster.ThreeWordMonsterImageReadyPayload,
-  ) => void;
-  "three-word-monster:voting-start": (
-    payload: ThreeWordMonster.ThreeWordMonsterVotingStartPayload,
-  ) => void;
-  "three-word-monster:vote-submitted": (
-    payload: ThreeWordMonster.ThreeWordMonsterVoteSubmittedPayload,
-  ) => void;
-  "three-word-monster:result": (
-    payload: ThreeWordMonster.ThreeWordMonsterResultPayload,
-  ) => void;
-  "three-word-monster:error": (payload: ErrorPayload) => void;
   "real-or-ai:room-state": (payload: RealOrAi.RealOrAiRoomStatePayload) => void;
   "real-or-ai:settings-updated": (
     payload: RealOrAi.RealOrAiSettingsUpdatedPayload,

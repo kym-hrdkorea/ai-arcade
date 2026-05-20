@@ -9,7 +9,7 @@ export const realOrAiGame = {
   minPlayers: 2,
   maxPlayers: 100,
   estimatedMinutes: 5,
-  thumbnail: "/games/real-or-ai-thumbnail.svg",
+  thumbnail: "/games/real-or-ai-arcade.webp",
   route: "/games/real-or-ai",
   status: "beta",
   tags: ["realtime", "photo", "quiz"],

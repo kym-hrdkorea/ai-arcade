@@ -8,7 +8,7 @@
 - 라우트는 `/games/real-or-ai`를 사용한다.
 - Socket.IO 이벤트는 `real-or-ai:*` prefix만 사용한다.
 - Draw Duel의 `RoomManager`, AI guesser, stroke renderer를 재사용하지 않는다.
-- Three Word Monster의 room manager와 image generator도 재사용하지 않는다.
+- 다른 게임의 room manager나 generator도 재사용하지 않는다.
 - 새 서버 로직은 `real-or-ai-room-manager.ts`와 `real-or-ai-socket-handlers.ts`로 분리한다.
 - 공통 타입, 설정 schema, payload 검증은 `packages/shared`에 둔다.
 - UI 컴포넌트는 `apps/web/features/real-or-ai` 아래에 둔다.

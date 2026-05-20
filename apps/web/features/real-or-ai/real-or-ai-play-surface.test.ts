@@ -7,6 +7,7 @@ import {
   createCandidateViewModels,
   formatResponseTime,
   getCandidateLabelById,
+  getClampedContainMagnifierGeometry,
   getContainMagnifierGeometry,
   getRoundEntryForPlayer,
   getTopScorerSummary,
@@ -160,5 +161,45 @@ describe("Real or AI play surface helpers", () => {
         zoom: 2,
       }),
     ).toBeNull();
+  });
+
+  it("clamps the draggable magnifier to the contained image area", () => {
+    const topLetterbox = getClampedContainMagnifierGeometry({
+      containerHeight: 300,
+      containerWidth: 400,
+      imageHeight: 900,
+      imageWidth: 1600,
+      lensSize: 144,
+      pointerX: 200,
+      pointerY: 20,
+      zoom: 2,
+    });
+
+    expect(topLetterbox).toMatchObject({
+      backgroundPosition: "-328px 72px",
+      backgroundSize: "800px 450px",
+      left: 200,
+      sourceXRatio: 0.5,
+      sourceYRatio: 0,
+      top: 37.5,
+    });
+
+    const rightEdge = getClampedContainMagnifierGeometry({
+      containerHeight: 300,
+      containerWidth: 400,
+      imageHeight: 900,
+      imageWidth: 1600,
+      lensSize: 144,
+      pointerX: 500,
+      pointerY: 150,
+      zoom: 2,
+    });
+
+    expect(rightEdge).toMatchObject({
+      left: 400,
+      sourceXRatio: 1,
+      sourceYRatio: 0.5,
+      top: 150,
+    });
   });
 });

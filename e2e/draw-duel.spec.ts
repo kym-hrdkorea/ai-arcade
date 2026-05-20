@@ -19,7 +19,7 @@ async function createHostRoom(browser: Browser, nickname: string) {
   await hostPage.goto("/games/draw-duel");
   await waitForRealtimeReady(hostPage);
   await hostPage.locator("#create-nickname").fill(nickname);
-  await hostPage.getByRole("button", { name: "새 방 만들기" }).click();
+  await hostPage.getByRole("button", { name: "방 만들기" }).click();
   await expect(hostPage.locator("body")).toContainText(/방 코드\s*[A-Z0-9]{6}/);
 
   const bodyText = await hostPage.locator("body").innerText();
@@ -295,7 +295,7 @@ test.describe("Draw Duel pilot readiness", () => {
       await hostPage.goto("/games/draw-duel");
       await waitForRealtimeReady(hostPage);
       await hostPage.locator("#create-nickname").fill("host-mobile");
-      await hostPage.getByRole("button", { name: "새 방 만들기" }).click();
+      await hostPage.getByRole("button", { name: "방 만들기" }).click();
       await expect(hostPage.locator("body")).toContainText(/방 코드\s*[A-Z0-9]{6}/);
 
       await hostPage.getByRole("button", { name: /QR 입장/ }).click();

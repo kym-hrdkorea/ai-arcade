@@ -1194,7 +1194,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                 : "grid flex-1 gap-6 py-8 lg:grid-cols-[0.95fr_1.05fr]"
             }
           >
-            <div className={isPlayingView ? "hidden sm:block" : undefined}>
+            <div className={room ? "hidden" : undefined}>
               <p className="font-arcade text-sm text-electric-cyan">Draw Duel</p>
               <h1 className="mt-4 text-3xl font-black leading-tight sm:text-5xl">
                 {isJoinOnly ? "닉네임을 입력하고 참가하세요" : "방을 만들거나 코드로 참가하세요"}
@@ -1733,7 +1733,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                   />
                   <button className="arcade-button arcade-button-primary mt-5 w-full" type="submit">
                     <Ticket aria-hidden="true" size={18} />
-                    새 방 만들기
+                    방 만들기
                   </button>
                 </form>
 

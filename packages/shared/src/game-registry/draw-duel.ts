@@ -9,7 +9,7 @@ export const drawDuelGame = {
   minPlayers: 2,
   maxPlayers: 10,
   estimatedMinutes: 8,
-  thumbnail: "/games/draw-duel-thumbnail.svg",
+  thumbnail: "/games/draw-duel-arcade.webp",
   route: "/games/draw-duel",
   status: "beta",
   tags: ["drawing", "realtime", "ai-vs-human"],

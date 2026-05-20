@@ -27,7 +27,6 @@ export default defineConfig({
         DISCONNECT_GRACE_MS: "2000",
         DRAW_DUEL_AI_PROVIDER: "mock",
         REALTIME_PORT: String(realtimePort),
-        THREE_WORD_MONSTER_IMAGE_PROVIDER: "mock",
       },
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,

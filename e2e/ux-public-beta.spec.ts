@@ -16,23 +16,16 @@ function extractRoomCode(text: string) {
   return roomCode;
 }
 
-async function createMonsterHostRoom(browser: Browser, nickname = "monster-host") {
-  const hostContext = await browser.newContext();
-  const hostPage = await hostContext.newPage();
-
-  await hostPage.goto("/games/three-word-monster");
-  await waitForRealtimeReady(hostPage);
-  await hostPage.locator("#monster-create-nickname").fill(nickname);
-  await hostPage.getByRole("button", { name: "방 만들기" }).click();
-  await expect(hostPage.locator("body")).toContainText(/방 코드\s*[A-Z0-9]{6}/);
-
-  const roomCode = extractRoomCode(await hostPage.locator("body").innerText());
-
-  return {
-    hostContext,
-    hostPage,
-    roomCode,
-  };
+function boxesOverlap(
+  first: { height: number; width: number; x: number; y: number },
+  second: { height: number; width: number; x: number; y: number },
+) {
+  return !(
+    first.x + first.width <= second.x ||
+    second.x + second.width <= first.x ||
+    first.y + first.height <= second.y ||
+    second.y + second.height <= first.y
+  );
 }
 
 async function createRealOrAiHostRoom(browser: Browser, nickname = "real-host") {
@@ -62,28 +55,6 @@ function extractRealOrAiRoomCode(text: string) {
   }
 
   return roomCode;
-}
-
-async function submitMonsterWords(page: Page, words: [string, string, string]) {
-  await page.locator("#monster-word-0").fill(words[0]);
-  await page.locator("#monster-word-1").fill(words[1]);
-  await page.locator("#monster-word-2").fill(words[2]);
-  await page.getByRole("button", { name: "단어 제출" }).click();
-}
-
-async function expectNoRawMonsterStatus(page: Page) {
-  const bodyText = await page.locator("body").innerText();
-
-  for (const rawStatus of [
-    "waiting",
-    "word-submission",
-    "image-generating",
-    "voting",
-    "revealing",
-    "result",
-  ]) {
-    expect(bodyText).not.toContain(rawStatus);
-  }
 }
 
 test.describe("public beta UX readiness", () => {
@@ -136,27 +107,54 @@ test.describe("public beta UX readiness", () => {
       await page.goto("/");
 
       const screen = page.getByTestId("hub-game-screen");
+      const selector = page.getByTestId("hub-game-selector");
+      const info = page.getByTestId("hub-game-info");
+      const actions = page.getByTestId("hub-game-actions");
       await expect(screen).toBeVisible();
 
       const firstBox = await screen.boundingBox();
-      if (!firstBox) {
+      const firstSelectorBox = await selector.boundingBox();
+      const firstInfoBox = await info.boundingBox();
+      const firstActionsBox = await actions.boundingBox();
+      if (!firstBox || !firstSelectorBox || !firstInfoBox || !firstActionsBox) {
         throw new Error("Hub game screen was not measurable.");
       }
 
       const expectedSize = {
+        actionsHeight: Math.round(firstActionsBox.height),
+        actionsWidth: Math.round(firstActionsBox.width),
         height: Math.round(firstBox.height),
+        infoHeight: Math.round(firstInfoBox.height),
+        infoWidth: Math.round(firstInfoBox.width),
+        selectorHeight: Math.round(firstSelectorBox.height),
+        selectorWidth: Math.round(firstSelectorBox.width),
         width: Math.round(firstBox.width),
       };
+      const firstImageSource = await screen.locator("img").getAttribute("src");
+      expect(firstImageSource).toContain("-arcade.webp");
+      expect(firstImageSource).not.toContain("-thumbnail.svg");
 
       for (let count = 0; count < 2; count += 1) {
         await page.getByRole("button", { name: "다음 게임" }).click();
         const nextBox = await screen.boundingBox();
-        if (!nextBox) {
+        const nextSelectorBox = await selector.boundingBox();
+        const nextInfoBox = await info.boundingBox();
+        const nextActionsBox = await actions.boundingBox();
+        if (!nextBox || !nextSelectorBox || !nextInfoBox || !nextActionsBox) {
           throw new Error("Hub game screen disappeared while cycling games.");
         }
 
         expect(Math.round(nextBox.width)).toBe(expectedSize.width);
         expect(Math.round(nextBox.height)).toBe(expectedSize.height);
+        expect(Math.round(nextSelectorBox.width)).toBe(expectedSize.selectorWidth);
+        expect(Math.round(nextSelectorBox.height)).toBe(expectedSize.selectorHeight);
+        expect(Math.round(nextInfoBox.width)).toBe(expectedSize.infoWidth);
+        expect(Math.round(nextInfoBox.height)).toBe(expectedSize.infoHeight);
+        expect(Math.round(nextActionsBox.width)).toBe(expectedSize.actionsWidth);
+        expect(Math.round(nextActionsBox.height)).toBe(expectedSize.actionsHeight);
+        const imageSource = await screen.locator("img").getAttribute("src");
+        expect(imageSource).toContain("-arcade.webp");
+        expect(imageSource).not.toContain("-thumbnail.svg");
       }
     }
   });
@@ -189,15 +187,6 @@ test.describe("public beta UX readiness", () => {
 
     await page.getByTestId("hub-game-selector").focus();
     await page.keyboard.press("ArrowRight");
-    await expect(page.getByRole("heading", { name: "Three Word Monster" })).toBeVisible();
-    await page.getByRole("button", { name: "Three Word Monster 사용설명 열기" }).click();
-    const monsterDialog = page.getByRole("dialog");
-    await expect(monsterDialog).toContainText("Three Word Monster");
-    await expect(monsterDialog).not.toContainText("mock 이미지 provider");
-    await page.keyboard.press("Escape");
-    await expect(monsterDialog).toHaveCount(0);
-
-    await page.getByRole("button", { name: "다음 게임" }).click();
     await expect(page.getByRole("heading", { name: "Real or AI" })).toBeVisible();
     await page.getByRole("button", { name: "Real or AI 사용설명 열기" }).click();
     const realOrAiDialog = page.getByRole("dialog");
@@ -214,9 +203,8 @@ test.describe("public beta UX readiness", () => {
   test("exposes Real or AI as a testable selector item with a live join form", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Draw Duel" })).toBeVisible();
-    await page.getByRole("button", { name: "다음 게임" }).click();
-    await expect(page.getByRole("heading", { name: "Three Word Monster" })).toBeVisible();
-    await page.getByRole("button", { name: "다음 게임" }).click();
+    await page.getByTestId("hub-game-selector").focus();
+    await page.keyboard.press("ArrowRight");
     await expect(page.getByRole("heading", { name: "Real or AI" })).toBeVisible();
     await expect(page.locator("body")).toContainText("테스트 가능");
     await expect(page.locator("body")).not.toContainText("Draft");
@@ -294,6 +282,13 @@ test.describe("public beta UX readiness", () => {
 
       await expect(guestPage.getByAltText("후보 A 사진").first()).toBeVisible();
       await expect(guestPage.getByAltText("후보 B 사진").first()).toBeVisible();
+      const candidateABox = await guestPage.getByTestId("real-ai-candidate-A").boundingBox();
+      const candidateBBox = await guestPage.getByTestId("real-ai-candidate-B").boundingBox();
+      expect(candidateABox).not.toBeNull();
+      expect(candidateBBox).not.toBeNull();
+      expect(boxesOverlap(candidateABox!, candidateBBox!)).toBe(false);
+      await expect(guestPage.getByTestId("real-ai-candidate-A")).toBeInViewport();
+      await expect(guestPage.getByTestId("real-ai-candidate-B")).toBeInViewport();
       await expect(guestPage.locator("body")).not.toContainText("이미지 없음");
       await expect(guestPage.locator("body")).not.toContainText("asset phase");
       await expect(guestPage.getByRole("button", { name: "후보 A 확대 보기" })).toBeVisible();
@@ -372,6 +367,43 @@ test.describe("public beta UX readiness", () => {
       await hostPage.getByRole("button", { name: "3초" }).click();
       await hostPage.getByRole("button", { name: "게임 시작" }).click();
       await expect(hostPage.getByText("진행 중").first()).toBeVisible({ timeout: 6000 });
+      await expect(hostPage.getByTestId("real-ai-candidate-A")).toBeInViewport();
+      await expect(hostPage.getByRole("button", { name: "후보 A 확대 도구" })).toBeInViewport();
+
+      await hostPage.getByRole("button", { name: "후보 A 확대 도구" }).click();
+      const inlineLens = hostPage.getByTestId("real-ai-lens-A");
+      await expect(inlineLens).toBeVisible();
+      const beforeLensBox = await inlineLens.boundingBox();
+      const candidateFrame = hostPage.getByTestId("real-ai-candidate-A-frame");
+      const frameBox = await candidateFrame.boundingBox();
+      expect(beforeLensBox).not.toBeNull();
+      expect(frameBox).not.toBeNull();
+
+      await candidateFrame.dispatchEvent("pointerdown", {
+        bubbles: true,
+        clientX: frameBox!.x + (frameBox!.width * 0.3),
+        clientY: frameBox!.y + (frameBox!.height * 0.45),
+        pointerId: 17,
+        pointerType: "touch",
+      });
+      await candidateFrame.dispatchEvent("pointermove", {
+        bubbles: true,
+        clientX: frameBox!.x + (frameBox!.width * 0.72),
+        clientY: frameBox!.y + (frameBox!.height * 0.58),
+        pointerId: 17,
+        pointerType: "touch",
+      });
+      await candidateFrame.dispatchEvent("pointerup", {
+        bubbles: true,
+        clientX: frameBox!.x + (frameBox!.width * 0.72),
+        clientY: frameBox!.y + (frameBox!.height * 0.58),
+        pointerId: 17,
+        pointerType: "touch",
+      });
+      const afterLensBox = await inlineLens.boundingBox();
+      expect(afterLensBox).not.toBeNull();
+      expect(Math.round(afterLensBox!.x)).not.toBe(Math.round(beforeLensBox!.x));
+      await hostPage.getByRole("button", { name: "후보 A 확대 도구" }).click();
 
       await hostPage.getByRole("button", { name: "후보 A 확대 보기" }).click();
       const dialog = hostPage.getByRole("dialog");
@@ -390,116 +422,5 @@ test.describe("public beta UX readiness", () => {
     }
   });
 
-  test("routes hub quick join to the selected Three Word Monster join page", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await page.getByLabel("게임", { exact: true }).selectOption("three-word-monster");
-    await page.locator("#room-code").fill("abc123");
 
-    const quickJoinButton = page.getByRole("button", { name: "바로 참가" });
-    await expect(quickJoinButton).toBeEnabled();
-    await quickJoinButton.click();
-
-    await expect(page).toHaveURL(/\/games\/three-word-monster\/join\?roomCode=ABC123/);
-    await waitForRealtimeReady(page);
-    await expect(page.locator("#monster-room-code")).toHaveCount(0);
-    await expect(page.locator("body")).toContainText("ABC123");
-    await expect(page.locator("#monster-join-nickname")).toBeVisible();
-    await expect(page.locator("body")).not.toContainText("방 만들기");
-  });
-
-  test("plays through Three Word Monster with Korean status labels and result reset", async ({
-    browser,
-  }) => {
-    const host = await createMonsterHostRoom(browser);
-    const guestContext = await browser.newContext();
-    const guestPage = await guestContext.newPage();
-
-    try {
-      await expect(host.hostPage.getByRole("button", { name: /QR 입장/ })).toBeVisible();
-      await host.hostPage.getByRole("button", { name: /QR 입장/ }).click();
-      await expect(host.hostPage.getByText("참가 링크")).toBeVisible();
-      await expect(host.hostPage.getByText("/games/three-word-monster/join?roomCode=")).toBeVisible();
-      await expect(host.hostPage.getByText(`roomCode=${host.roomCode}`)).toBeVisible();
-      await host.hostPage.getByRole("button", { name: "크게 보기" }).click();
-      await expect(host.hostPage.getByRole("dialog")).toContainText(host.roomCode);
-      await host.hostPage.keyboard.press("Escape");
-      await expect(host.hostPage.getByRole("dialog")).toHaveCount(0);
-
-      await guestPage.goto(`/games/three-word-monster/join?roomCode=${host.roomCode}`);
-      await waitForRealtimeReady(guestPage);
-      await expect(guestPage.locator("#monster-room-code")).toHaveCount(0);
-      await expect(guestPage.locator("body")).toContainText(host.roomCode);
-      await expect(guestPage.locator("body")).not.toContainText("방 만들기");
-      await guestPage.locator("#monster-join-nickname").fill("monster-guest");
-      await guestPage.getByRole("button", { name: "입장하기" }).click();
-      await expect(host.hostPage.getByRole("button", { name: "게임 시작" })).toBeEnabled();
-
-      await expectNoRawMonsterStatus(host.hostPage);
-      await host.hostPage.getByRole("button", { name: "게임 시작" }).click();
-      await expect(host.hostPage.getByText("3단어 입력")).toBeVisible();
-      await expect(guestPage.getByText("3단어 입력")).toBeVisible();
-
-      await submitMonsterWords(host.hostPage, ["용", "우산", "로봇"]);
-      await submitMonsterWords(guestPage, ["별", "버튼", "구름"]);
-      await expect(host.hostPage.getByRole("heading", { name: "괴물 갤러리" })).toBeVisible({ timeout: 10_000 });
-      await expect(guestPage.getByRole("heading", { name: "괴물 갤러리" })).toBeVisible({ timeout: 10_000 });
-
-      await expectNoRawMonsterStatus(host.hostPage);
-      await expect(host.hostPage.getByText("자기 괴물에는 투표할 수 없습니다.")).toBeVisible();
-      await host.hostPage.getByRole("button", { name: "투표", exact: true }).click();
-      await expect(host.hostPage.getByText("내 투표 완료")).toBeVisible();
-      await guestPage.getByRole("button", { name: "투표", exact: true }).click();
-
-      await expect(host.hostPage.getByText("결과 발표").first()).toBeVisible({ timeout: 10_000 });
-      await expect(host.hostPage.locator("body")).toContainText("우승");
-      await expectNoRawMonsterStatus(host.hostPage);
-
-      await host.hostPage.getByRole("button", { name: "다시 시작" }).click();
-      await expect(host.hostPage.getByText("대기실")).toBeVisible();
-      await expect(host.hostPage.getByText("대기 중")).toBeVisible();
-      await expectNoRawMonsterStatus(host.hostPage);
-    } finally {
-      await Promise.all([host.hostContext.close(), guestContext.close()]);
-    }
-  });
-
-  test("keeps the Three Word Monster QR modal inside a mobile viewport", async ({
-    browser,
-  }) => {
-    const hostContext = await browser.newContext({
-      isMobile: true,
-      viewport: {
-        height: 844,
-        width: 390,
-      },
-    });
-    const hostPage = await hostContext.newPage();
-
-    try {
-      await hostPage.goto("/games/three-word-monster");
-      await waitForRealtimeReady(hostPage);
-      await hostPage.locator("#monster-create-nickname").fill("mobile-host");
-      await hostPage.getByRole("button", { name: "방 만들기" }).click();
-      await expect(hostPage.locator("body")).toContainText(/방 코드\s*[A-Z0-9]{6}/);
-
-      await hostPage.getByRole("button", { name: /QR 입장/ }).click();
-      await hostPage.getByRole("button", { name: "크게 보기" }).click();
-
-      const dialog = hostPage.getByRole("dialog");
-      await expect(dialog).toBeVisible();
-      await expect(dialog).toContainText("방 코드");
-
-      const box = await dialog.boundingBox();
-      expect(box).not.toBeNull();
-      expect(box?.x).toBeGreaterThanOrEqual(0);
-      expect(box?.width).toBeLessThanOrEqual(390);
-
-      await hostPage.keyboard.press("Escape");
-      await expect(dialog).toHaveCount(0);
-    } finally {
-      await hostContext.close();
-    }
-  });
 });

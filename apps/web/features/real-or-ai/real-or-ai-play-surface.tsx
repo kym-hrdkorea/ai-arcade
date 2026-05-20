@@ -32,7 +32,7 @@ import {
   createCandidateViewModels,
   formatResponseTime,
   getCandidateLabelById,
-  getContainMagnifierGeometry,
+  getClampedContainMagnifierGeometry,
   getRoundEntryForPlayer,
   getTopScorerSummary,
   type MagnifierGeometry,
@@ -84,7 +84,7 @@ type ImageZoomDialogProps = {
 };
 
 const inlineLensSize = 144;
-const inlineLensZoom = 2.4;
+const inlineLensZoom = 2;
 
 function sourceTypeLabel(sourceType: "ai" | "real") {
   return sourceType === "real" ? "실제 사진" : "AI 생성";
@@ -133,7 +133,7 @@ export function RealOrAiAnsweringPanel({
     : room.settings.roundDurationSeconds;
 
   return (
-    <section className="mt-5 grid gap-5 border border-pixel-blue bg-pixel-blue/10 p-4">
+    <section className="mt-3 grid gap-3 border border-pixel-blue bg-pixel-blue/10 p-2 sm:gap-4 sm:p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-arcade text-xs text-electric-cyan">ROUND</p>
@@ -155,7 +155,7 @@ export function RealOrAiAnsweringPanel({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid min-w-0 items-stretch gap-3 lg:grid-cols-2">
         {candidateViews.map((viewModel) => (
           <CandidateCard
             disabled={hasSubmitted || isSubmittingAnswer}
@@ -215,38 +215,108 @@ function CandidateCard({
   submitted,
   viewModel,
 }: CandidateCardProps) {
+  const imageFrameRef = useRef<HTMLDivElement>(null);
   const [lensGeometry, setLensGeometry] = useState<MagnifierGeometry | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
+  const [isLensEnabled, setIsLensEnabled] = useState(false);
+  const [isLensDragging, setIsLensDragging] = useState(false);
 
-  const moveLens = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    if (imageFailed || event.pointerType === "touch") {
+  const updateLensAtPoint = useCallback((clientX: number, clientY: number) => {
+    const frame = imageFrameRef.current;
+
+    if (!frame || imageFailed) {
       return;
     }
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const geometry = getContainMagnifierGeometry({
+    const rect = frame.getBoundingClientRect();
+    const geometry = getClampedContainMagnifierGeometry({
       containerHeight: rect.height,
       containerWidth: rect.width,
       imageHeight: viewModel.candidate.height,
       imageWidth: viewModel.candidate.width,
       lensSize: inlineLensSize,
-      pointerX: event.clientX - rect.left,
-      pointerY: event.clientY - rect.top,
+      pointerX: clientX - rect.left,
+      pointerY: clientY - rect.top,
       zoom: inlineLensZoom,
     });
     setLensGeometry(geometry);
   }, [imageFailed, viewModel.candidate.height, viewModel.candidate.width]);
 
+  const toggleLens = useCallback(() => {
+    setIsLensEnabled((current) => {
+      const next = !current;
+
+      if (!next) {
+        setIsLensDragging(false);
+        setLensGeometry(null);
+        return next;
+      }
+
+      window.requestAnimationFrame(() => {
+        const frame = imageFrameRef.current;
+
+        if (!frame) {
+          return;
+        }
+
+        const rect = frame.getBoundingClientRect();
+        updateLensAtPoint(rect.left + (rect.width / 2), rect.top + (rect.height / 2));
+      });
+
+      return next;
+    });
+  }, [updateLensAtPoint]);
+
+  function startLensDrag(event: PointerEvent<HTMLDivElement>) {
+    if (event.target instanceof Element && event.target.closest("button")) {
+      return;
+    }
+
+    if (!isLensEnabled || imageFailed) {
+      return;
+    }
+
+    event.preventDefault();
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Some synthetic pointer events cannot be captured; dragging still works.
+    }
+
+    setIsLensDragging(true);
+    updateLensAtPoint(event.clientX, event.clientY);
+  }
+
+  function moveLensDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!isLensEnabled || !isLensDragging || imageFailed) {
+      return;
+    }
+
+    event.preventDefault();
+    updateLensAtPoint(event.clientX, event.clientY);
+  }
+
+  function stopLensDrag() {
+    setIsLensDragging(false);
+  }
+
   return (
     <article
-      className={`grid gap-3 border-2 bg-console-black p-3 ${
+      className={`grid min-w-0 gap-3 border-2 bg-console-black p-3 ${
         isSelected ? "border-coin-yellow" : "border-line-gray"
       }`}
+      data-testid={`real-ai-candidate-${viewModel.label}`}
     >
       <div
-        className="relative aspect-[4/3] min-h-64 overflow-hidden border border-line-gray bg-console-black"
-        onPointerLeave={() => setLensGeometry(null)}
-        onPointerMove={moveLens}
+        className="relative h-[clamp(12rem,30vh,22rem)] min-w-0 overflow-hidden border border-line-gray bg-console-black sm:h-[clamp(14rem,34vh,26rem)] lg:h-[clamp(14rem,32vh,22rem)]"
+        data-testid={`real-ai-candidate-${viewModel.label}-frame`}
+        onPointerCancel={stopLensDrag}
+        onPointerDown={startLensDrag}
+        onPointerMove={moveLensDrag}
+        onPointerUp={stopLensDrag}
+        ref={imageFrameRef}
+        style={{ touchAction: isLensEnabled ? "none" : "auto" }}
       >
         {imageFailed ? (
           <div className="grid h-full place-items-center p-5 text-center">
@@ -264,6 +334,7 @@ function CandidateCard({
             height={viewModel.candidate.height}
             onError={() => {
               setImageFailed(true);
+              setIsLensEnabled(false);
               setLensGeometry(null);
             }}
             src={viewModel.candidate.src}
@@ -275,19 +346,34 @@ function CandidateCard({
         <span className="absolute left-3 top-3 z-10 border border-coin-yellow bg-console-black px-3 py-2 font-arcade text-xl text-coin-yellow">
           {viewModel.label}
         </span>
-        <button
-          aria-label={`후보 ${viewModel.label} 확대 보기`}
-          className="arcade-button arcade-button-ghost absolute right-3 top-3 z-20 h-11 min-h-11 w-11 px-0"
-          onClick={() => onOpenZoom(viewModel)}
-          type="button"
-        >
-          <Search aria-hidden="true" size={18} />
-        </button>
+        <div className="absolute right-3 top-3 z-20 flex gap-2">
+          <button
+            aria-label={`후보 ${viewModel.label} 확대 도구`}
+            aria-pressed={isLensEnabled}
+            className={`arcade-button h-11 min-h-11 w-11 px-0 ${
+              isLensEnabled ? "arcade-button-secondary" : "arcade-button-ghost"
+            }`}
+            disabled={imageFailed}
+            onClick={toggleLens}
+            type="button"
+          >
+            <ZoomIn aria-hidden="true" size={18} />
+          </button>
+          <button
+            aria-label={`후보 ${viewModel.label} 확대 보기`}
+            className="arcade-button arcade-button-ghost h-11 min-h-11 w-11 px-0"
+            onClick={() => onOpenZoom(viewModel)}
+            type="button"
+          >
+            <Search aria-hidden="true" size={18} />
+          </button>
+        </div>
 
-        {lensGeometry && !imageFailed ? (
+        {lensGeometry && isLensEnabled && !imageFailed ? (
           <div
             aria-hidden="true"
             className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-coin-yellow bg-no-repeat shadow-panel"
+            data-testid={`real-ai-lens-${viewModel.label}`}
             style={{
               backgroundImage: `url("${viewModel.candidate.src}")`,
               backgroundPosition: lensGeometry.backgroundPosition,
@@ -298,6 +384,11 @@ function CandidateCard({
               width: `${inlineLensSize}px`,
             }}
           />
+        ) : null}
+        {isLensEnabled && !imageFailed ? (
+          <div className="pointer-events-none absolute bottom-3 left-3 right-3 border border-line-gray bg-console-black/90 px-3 py-2 text-xs font-bold text-muted-gray">
+            돋보기를 손가락이나 마우스로 드래그하세요.
+          </div>
         ) : null}
       </div>
 
@@ -429,6 +520,7 @@ function ImageZoomDialog({ onClose, viewModel }: ImageZoomDialogProps) {
           onPointerDown={startPan}
           onPointerMove={movePan}
           onPointerUp={stopPan}
+          style={{ touchAction: zoomLevel === 1 ? "auto" : "none" }}
         >
           {imageFailed ? (
             <div className="p-8 text-center">
@@ -488,19 +580,19 @@ export function RealOrAiRoundResultPanel({
         </span>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         {result.candidates.map((candidate, index) => {
           const label = index === 0 ? "A" : "B";
           const isCorrect = candidate.id === result.correctCandidateId;
 
           return (
             <article
-              className={`border-2 bg-console-black p-3 ${
+              className={`min-w-0 border-2 bg-console-black p-3 ${
                 isCorrect ? "border-health-green" : "border-line-gray"
               }`}
               key={candidate.id}
             >
-              <div className="relative aspect-[4/3] overflow-hidden border border-line-gray bg-panel-gray">
+              <div className="relative h-[clamp(16rem,36vh,30rem)] overflow-hidden border border-line-gray bg-panel-gray">
                 <Image
                   alt={`결과 후보 ${label} 사진`}
                   className="h-full w-full object-contain"

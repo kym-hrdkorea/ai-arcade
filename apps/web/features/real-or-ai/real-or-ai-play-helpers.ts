@@ -89,6 +89,41 @@ export function calculateContainedImageRect(
   };
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildMagnifierGeometry({
+  imageRect,
+  lensSize,
+  pointerX,
+  pointerY,
+  zoom,
+}: {
+  imageRect: ContainedImageRect;
+  lensSize: number;
+  pointerX: number;
+  pointerY: number;
+  zoom: number;
+}): MagnifierGeometry {
+  const sourceXRatio = (pointerX - imageRect.left) / Math.max(1, imageRect.width);
+  const sourceYRatio = (pointerY - imageRect.top) / Math.max(1, imageRect.height);
+  const lensRadius = lensSize / 2;
+  const scaledWidth = imageRect.width * zoom;
+  const scaledHeight = imageRect.height * zoom;
+
+  return {
+    backgroundPosition: `${lensRadius - (sourceXRatio * scaledWidth)}px ${
+      lensRadius - (sourceYRatio * scaledHeight)
+    }px`,
+    backgroundSize: `${scaledWidth}px ${scaledHeight}px`,
+    left: imageRect.left + (sourceXRatio * imageRect.width),
+    sourceXRatio,
+    sourceYRatio,
+    top: imageRect.top + (sourceYRatio * imageRect.height),
+  };
+}
+
 export function getContainMagnifierGeometry({
   containerHeight,
   containerWidth,
@@ -124,22 +159,50 @@ export function getContainMagnifierGeometry({
     return null;
   }
 
-  const sourceXRatio = (pointerX - imageRect.left) / Math.max(1, imageRect.width);
-  const sourceYRatio = (pointerY - imageRect.top) / Math.max(1, imageRect.height);
-  const lensRadius = lensSize / 2;
-  const scaledWidth = imageRect.width * zoom;
-  const scaledHeight = imageRect.height * zoom;
+  return buildMagnifierGeometry({
+    imageRect,
+    lensSize,
+    pointerX,
+    pointerY,
+    zoom,
+  });
+}
 
-  return {
-    backgroundPosition: `${lensRadius - (sourceXRatio * scaledWidth)}px ${
-      lensRadius - (sourceYRatio * scaledHeight)
-    }px`,
-    backgroundSize: `${scaledWidth}px ${scaledHeight}px`,
-    left: imageRect.left + (sourceXRatio * imageRect.width),
-    sourceXRatio,
-    sourceYRatio,
-    top: imageRect.top + (sourceYRatio * imageRect.height),
-  };
+export function getClampedContainMagnifierGeometry({
+  containerHeight,
+  containerWidth,
+  imageHeight,
+  imageWidth,
+  lensSize,
+  pointerX,
+  pointerY,
+  zoom,
+}: {
+  containerHeight: number;
+  containerWidth: number;
+  imageHeight: number;
+  imageWidth: number;
+  lensSize: number;
+  pointerX: number;
+  pointerY: number;
+  zoom: number;
+}): MagnifierGeometry {
+  const imageRect = calculateContainedImageRect(
+    containerWidth,
+    containerHeight,
+    imageWidth,
+    imageHeight,
+  );
+  const maxX = imageRect.left + imageRect.width;
+  const maxY = imageRect.top + imageRect.height;
+
+  return buildMagnifierGeometry({
+    imageRect,
+    lensSize,
+    pointerX: clamp(pointerX, imageRect.left, maxX),
+    pointerY: clamp(pointerY, imageRect.top, maxY),
+    zoom,
+  });
 }
 
 export function getCandidateLabelById(

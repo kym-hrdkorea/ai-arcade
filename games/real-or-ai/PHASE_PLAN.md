@@ -82,7 +82,7 @@
 
 완료 기준:
 
-- Draw Duel, Three Word Monster manager를 재사용하지 않음
+- 다른 게임 manager를 재사용하지 않음
 - 라운드당 1회 제출만 허용
 - 정답 정보가 라운드 결과 전 public state에 없음
 - manager unit test 통과

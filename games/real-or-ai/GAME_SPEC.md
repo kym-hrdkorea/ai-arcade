@@ -130,7 +130,7 @@ Phase 0 이미지 정책:
 
 ## 8. Socket.IO 이벤트 초안
 
-모든 게임 전용 이벤트는 `real-or-ai:*` prefix만 사용한다. Draw Duel과 Three Word Monster의 manager, handler, 이벤트 payload를 재사용하지 않는다.
+모든 게임 전용 이벤트는 `real-or-ai:*` prefix만 사용한다. 다른 게임의 manager, handler, 이벤트 payload를 재사용하지 않는다.
 
 클라이언트 -> 서버:
 
