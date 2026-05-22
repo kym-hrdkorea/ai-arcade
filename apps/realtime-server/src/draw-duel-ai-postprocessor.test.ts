@@ -94,9 +94,8 @@ describe("postProcessAIGuesserOutput", () => {
     expect(result.text).toBe(context.correctWord);
   });
 
-  it("does not turn a wrong specific object into the correct answer", () => {
+  it("uses a correct accepted answer from the candidate list for scoring", () => {
     const context = scoringContextFor("apple");
-    const wrongWord = wordByAlias("pizza");
     const result = postProcessAIGuesserOutput(
       {
         candidates: [
@@ -114,8 +113,65 @@ describe("postProcessAIGuesserOutput", () => {
       context,
     );
 
-    expect(result.text).toBe(wrongWord);
-    expect(result.text).not.toBe(context.correctWord);
+    expect(result.text).toBe(context.correctWord);
+    expect(result.confidence).toBe(0.62);
+  });
+
+  it("keeps official guesses constrained to the draw-duel word bank", () => {
+    const context = scoringContextFor("apple");
+    const result = postProcessAIGuesserOutput(
+      {
+        candidates: [
+          {
+            confidence: 0.74,
+            text: "lollipop",
+          },
+          {
+            confidence: 0.55,
+            text: "random mascot",
+          },
+        ],
+        text: "lollipop",
+      },
+      context,
+    );
+
+    expect(result.text).toBe(wordByAlias("candy"));
+    expect(result.candidates?.map((candidate) => candidate.text)).toEqual([
+      wordByAlias("candy"),
+    ]);
+  });
+
+  it("falls back to unknown when no candidate can be mapped to the word bank", () => {
+    const context = scoringContextFor("apple");
+    const result = postProcessAIGuesserOutput(
+      {
+        candidates: [
+          {
+            confidence: 0.74,
+            text: "mythical mascot",
+          },
+        ],
+        text: "mythical mascot",
+      },
+      context,
+    );
+
+    expect(result.text).toBe("모르겠음");
+    expect(result.candidates?.[0]?.text).toBe("모르겠음");
+  });
+
+  it("maps descriptive phrases that contain a known word back to that word", () => {
+    const context = scoringContextFor("school");
+    const result = postProcessAIGuesserOutput(
+      {
+        confidence: 0.7,
+        text: "school building",
+      },
+      context,
+    );
+
+    expect(result.text).toBe(context.correctWord);
   });
 
   it("removes empty, too-long, and answer-revealing commentary steps", () => {

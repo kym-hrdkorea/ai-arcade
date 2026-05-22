@@ -11,9 +11,9 @@ import type {
 } from "@ai-arcade/shared";
 import {
   CheckCircle2,
+  LogOut,
   Maximize2,
   MousePointerClick,
-  Search,
   Trophy,
   X,
   ZoomIn,
@@ -46,6 +46,7 @@ type RealOrAiAnsweringPanelProps = {
   currentPlayerId: string | null;
   isSubmittingAnswer: boolean;
   onCandidateSelect: (candidateId: string) => void;
+  onLeaveRoom: () => void;
   onSubmitAnswer: () => void;
   room: RealOrAiRoomState;
   round: RealOrAiRoundState;
@@ -105,6 +106,7 @@ export function RealOrAiAnsweringPanel({
   currentPlayerId,
   isSubmittingAnswer,
   onCandidateSelect,
+  onLeaveRoom,
   onSubmitAnswer,
   room,
   round,
@@ -131,31 +133,44 @@ export function RealOrAiAnsweringPanel({
   const remainingSeconds = timer?.roundId === round.roundId
     ? timer.remainingSeconds
     : room.settings.roundDurationSeconds;
+  const selectedCandidateLabel = getCandidateLabelById(
+    round.item.candidates,
+    selectedCandidateId ?? undefined,
+  );
 
   return (
-    <section className="mt-3 grid gap-3 border border-pixel-blue bg-pixel-blue/10 p-2 sm:gap-4 sm:p-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="font-arcade text-xs text-electric-cyan">ROUND</p>
-          <h3 className="mt-1 text-2xl font-black text-screen-white">
-            {round.roundNumber} / {round.totalRounds}
+    <section className="grid gap-2 sm:gap-4">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 border border-pixel-blue bg-pixel-blue/10 p-2 sm:gap-3 sm:p-3">
+        <div className="min-w-0">
+          <p className="font-arcade text-[0.65rem] text-electric-cyan">ROUND</p>
+          <h3 className="mt-1 text-lg font-black leading-tight text-screen-white sm:text-2xl">
+            {round.roundNumber}/{round.totalRounds}
           </h3>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-center">
-          <div className="arcade-meter min-h-16 px-3 py-2">
-            <strong>{remainingSeconds}</strong>
-            <span>남은 초</span>
-          </div>
-          <div className="arcade-meter min-h-16 px-3 py-2">
-            <strong>
-              {matchingAnswerCount.submittedCount}/{matchingAnswerCount.playerCount}
-            </strong>
-            <span>제출</span>
-          </div>
+        <div className="grid min-h-12 min-w-20 place-items-center border border-line-gray bg-console-black px-2 text-center">
+          <strong className="text-xl font-black leading-none text-screen-white">
+            {remainingSeconds}
+          </strong>
+          <span className="mt-1 text-xs font-black text-muted-gray">초</span>
         </div>
+        <div className="grid min-h-12 min-w-20 place-items-center border border-line-gray bg-console-black px-2 text-center">
+          <strong className="text-xl font-black leading-none text-screen-white">
+            {matchingAnswerCount.submittedCount}/{matchingAnswerCount.playerCount}
+          </strong>
+          <span className="mt-1 text-xs font-black text-muted-gray">제출</span>
+        </div>
+        <button
+          aria-label="방 나가기"
+          className="arcade-button arcade-button-ghost h-12 min-h-12 w-12 px-0"
+          data-testid="real-ai-leave-round"
+          onClick={onLeaveRoom}
+          type="button"
+        >
+          <LogOut aria-hidden="true" size={18} />
+        </button>
       </div>
 
-      <div className="grid min-w-0 items-stretch gap-3 lg:grid-cols-2">
+      <div className="grid min-w-0 items-stretch gap-2 lg:grid-cols-2">
         {candidateViews.map((viewModel) => (
           <CandidateCard
             disabled={hasSubmitted || isSubmittingAnswer}
@@ -169,23 +184,35 @@ export function RealOrAiAnsweringPanel({
         ))}
       </div>
 
-      <div className="sticky bottom-2 z-20 grid gap-3 border border-line-gray bg-console-black/95 p-3 shadow-panel sm:static sm:grid-cols-[1fr_auto] sm:items-center">
-        <div className="text-sm font-bold leading-6 text-muted-gray">
+      <div
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border border-line-gray bg-console-black/95 p-1.5 sm:p-3"
+        data-testid="real-ai-submit-bar"
+      >
+        <div className="min-w-0 text-xs font-bold leading-5 text-muted-gray sm:text-sm sm:leading-6">
           {hasSubmitted ? (
-            <span className="inline-flex items-center gap-2 text-health-green">
+            <span className="flex items-center gap-2 text-health-green">
               <CheckCircle2 aria-hidden="true" size={18} />
-              제출 완료 · 후보{" "}
-              {getCandidateLabelById(round.item.candidates, submittedAnswer.selectedCandidateId)}
+              <span className="truncate">
+                제출 완료 · 후보{" "}
+                {getCandidateLabelById(round.item.candidates, submittedAnswer.selectedCandidateId)}
+              </span>
             </span>
           ) : (
-            <span className="inline-flex items-center gap-2">
+            <span className="flex items-center gap-2">
               <MousePointerClick aria-hidden="true" size={18} />
-              진짜 사진이라고 생각하는 후보를 고른 뒤 제출하세요.
+              <span className="truncate">
+                {selectedCandidateId
+                  ? `후보 ${selectedCandidateLabel} 선택 · 제출`
+                  : "후보 선택 후 제출"}
+              </span>
             </span>
           )}
         </div>
         <button
-          className="arcade-button arcade-button-primary"
+          className={`arcade-button h-11 min-h-11 min-w-[7.25rem] whitespace-nowrap px-3 text-sm sm:h-12 sm:min-h-12 sm:px-4 sm:text-base ${
+            hasSubmitted ? "arcade-button-ghost" : "arcade-button-primary"
+          }`}
+          data-testid="real-ai-submit-answer"
           disabled={
             !currentPlayerId ||
             !selectedCandidateId ||
@@ -196,7 +223,7 @@ export function RealOrAiAnsweringPanel({
           onClick={onSubmitAnswer}
           type="button"
         >
-          {isSubmittingAnswer ? "제출 중" : "진짜 사진으로 제출"}
+          {hasSubmitted ? "제출 완료" : isSubmittingAnswer ? "제출 중" : "진짜 사진 제출"}
         </button>
       </div>
 
@@ -303,20 +330,22 @@ function CandidateCard({
 
   return (
     <article
-      className={`grid min-w-0 gap-3 border-2 bg-console-black p-3 ${
+      className={`grid min-w-0 gap-2 border-2 bg-console-black p-2 sm:gap-3 sm:p-3 ${
         isSelected ? "border-coin-yellow" : "border-line-gray"
       }`}
       data-testid={`real-ai-candidate-${viewModel.label}`}
     >
       <div
-        className="relative h-[clamp(12rem,30vh,22rem)] min-w-0 overflow-hidden border border-line-gray bg-console-black sm:h-[clamp(14rem,34vh,26rem)] lg:h-[clamp(14rem,32vh,22rem)]"
+        className="relative h-[clamp(200px,28svh,240px)] w-full max-w-full min-w-0 overflow-hidden border border-line-gray bg-console-black [@media(max-height:680px)]:h-[clamp(156px,25svh,168px)] [@media(min-height:681px)_and_(max-height:720px)]:h-[clamp(180px,27svh,200px)] sm:h-[clamp(240px,34svh,360px)] lg:h-[clamp(18rem,42svh,30rem)]"
         data-testid={`real-ai-candidate-${viewModel.label}-frame`}
         onPointerCancel={stopLensDrag}
         onPointerDown={startLensDrag}
         onPointerMove={moveLensDrag}
         onPointerUp={stopLensDrag}
         ref={imageFrameRef}
-        style={{ touchAction: isLensEnabled ? "none" : "auto" }}
+        style={{
+          touchAction: isLensEnabled ? "none" : "auto",
+        }}
       >
         {imageFailed ? (
           <div className="grid h-full place-items-center p-5 text-center">
@@ -343,32 +372,6 @@ function CandidateCard({
           />
         )}
 
-        <span className="absolute left-3 top-3 z-10 border border-coin-yellow bg-console-black px-3 py-2 font-arcade text-xl text-coin-yellow">
-          {viewModel.label}
-        </span>
-        <div className="absolute right-3 top-3 z-20 flex gap-2">
-          <button
-            aria-label={`후보 ${viewModel.label} 확대 도구`}
-            aria-pressed={isLensEnabled}
-            className={`arcade-button h-11 min-h-11 w-11 px-0 ${
-              isLensEnabled ? "arcade-button-secondary" : "arcade-button-ghost"
-            }`}
-            disabled={imageFailed}
-            onClick={toggleLens}
-            type="button"
-          >
-            <ZoomIn aria-hidden="true" size={18} />
-          </button>
-          <button
-            aria-label={`후보 ${viewModel.label} 확대 보기`}
-            className="arcade-button arcade-button-ghost h-11 min-h-11 w-11 px-0"
-            onClick={() => onOpenZoom(viewModel)}
-            type="button"
-          >
-            <Search aria-hidden="true" size={18} />
-          </button>
-        </div>
-
         {lensGeometry && isLensEnabled && !imageFailed ? (
           <div
             aria-hidden="true"
@@ -385,24 +388,42 @@ function CandidateCard({
             }}
           />
         ) : null}
-        {isLensEnabled && !imageFailed ? (
-          <div className="pointer-events-none absolute bottom-3 left-3 right-3 border border-line-gray bg-console-black/90 px-3 py-2 text-xs font-bold text-muted-gray">
-            돋보기를 손가락이나 마우스로 드래그하세요.
-          </div>
-        ) : null}
       </div>
 
-      <button
-        aria-pressed={isSelected}
-        className={`arcade-button ${
-          isSelected ? "arcade-button-secondary" : "arcade-button-ghost"
-        }`}
-        disabled={disabled}
-        onClick={() => onSelect(viewModel.candidate.id)}
-        type="button"
-      >
-        {submitted ? (isSelected ? "제출한 후보" : "제출 후 잠김") : `후보 ${viewModel.label} 선택`}
-      </button>
+      <div className="grid grid-cols-[minmax(0,1fr)_3rem_3rem] gap-2">
+        <button
+          aria-pressed={isSelected}
+          className={`arcade-button min-h-12 justify-start px-3 ${
+            isSelected ? "arcade-button-secondary" : "arcade-button-ghost"
+          }`}
+          disabled={disabled}
+          onClick={() => onSelect(viewModel.candidate.id)}
+          type="button"
+        >
+          <span className="font-arcade text-base">후보 {viewModel.label}</span>
+          <span>{submitted ? (isSelected ? "제출한 후보" : "잠김") : "선택"}</span>
+        </button>
+        <button
+          aria-label={`후보 ${viewModel.label} 확대 도구`}
+          aria-pressed={isLensEnabled}
+          className={`arcade-button h-12 min-h-12 w-12 px-0 ${
+            isLensEnabled ? "arcade-button-secondary" : "arcade-button-ghost"
+          }`}
+          disabled={imageFailed}
+          onClick={toggleLens}
+          type="button"
+        >
+          <ZoomIn aria-hidden="true" size={18} />
+        </button>
+        <button
+          aria-label={`후보 ${viewModel.label} 확대 보기`}
+          className="arcade-button arcade-button-ghost h-12 min-h-12 w-12 px-0"
+          onClick={() => onOpenZoom(viewModel)}
+          type="button"
+        >
+          <Maximize2 aria-hidden="true" size={18} />
+        </button>
+      </div>
     </article>
   );
 }
@@ -470,11 +491,11 @@ function ImageZoomDialog({ onClose, viewModel }: ImageZoomDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-console-black/90 px-4 py-6">
+    <div className="fixed inset-0 z-50 grid bg-console-black/95 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] sm:place-items-center sm:px-4 sm:py-6">
       <section
         aria-labelledby="real-ai-zoom-title"
         aria-modal="true"
-        className="arcade-panel grid max-h-full w-full max-w-[calc(100vw-2rem)] gap-4 overflow-auto p-4 sm:max-w-5xl sm:p-5"
+        className="arcade-panel grid h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-screen grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden p-3 sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:w-full sm:max-w-5xl sm:gap-4 sm:p-5"
         role="dialog"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -487,6 +508,7 @@ function ImageZoomDialog({ onClose, viewModel }: ImageZoomDialogProps) {
           <button
             aria-label="확대 보기 닫기"
             className="arcade-button arcade-button-ghost h-11 min-h-11 w-11 px-0"
+            data-testid="real-ai-zoom-close"
             onClick={onClose}
             ref={closeButtonRef}
             type="button"
@@ -515,7 +537,7 @@ function ImageZoomDialog({ onClose, viewModel }: ImageZoomDialogProps) {
         </div>
 
         <div
-          className="relative grid min-h-[52vh] cursor-grab place-items-center overflow-hidden border-2 border-line-gray bg-console-black active:cursor-grabbing"
+          className="relative grid min-h-0 cursor-grab place-items-center overflow-hidden border-2 border-line-gray bg-console-black active:cursor-grabbing"
           onPointerCancel={stopPan}
           onPointerDown={startPan}
           onPointerMove={movePan}
@@ -532,7 +554,7 @@ function ImageZoomDialog({ onClose, viewModel }: ImageZoomDialogProps) {
           ) : (
             <Image
               alt={viewModel.imageAlt}
-              className="max-h-[76vh] w-auto max-w-full select-none object-contain"
+              className="max-h-full w-auto max-w-full select-none object-contain"
               draggable={false}
               height={viewModel.candidate.height}
               onError={() => setImageFailed(true)}
@@ -545,9 +567,6 @@ function ImageZoomDialog({ onClose, viewModel }: ImageZoomDialogProps) {
               width={viewModel.candidate.width}
             />
           )}
-          <div className="pointer-events-none absolute bottom-3 left-3 border border-line-gray bg-console-black/90 px-3 py-2 text-xs font-bold text-muted-gray">
-            드래그해서 위치를 조정할 수 있습니다.
-          </div>
         </div>
       </section>
     </div>
@@ -567,7 +586,10 @@ export function RealOrAiRoundResultPanel({
   const isLastRound = result.roundNumber >= result.totalRounds;
 
   return (
-    <section className="mt-5 grid gap-5 border border-health-green bg-health-green/10 p-4">
+    <section
+      className="mt-5 grid gap-5 border border-health-green bg-health-green/10 p-4"
+      data-testid="real-ai-round-result"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-arcade text-xs text-health-green">라운드 결과</p>
@@ -681,7 +703,7 @@ export function RealOrAiRoundResultPanel({
         </button>
       ) : (
         <p className="border border-line-gray bg-console-black p-3 text-sm font-bold text-muted-gray">
-          호스트가 다음 진행을 선택하고 있습니다.
+          호스트가 다음 라운드를 준비하고 있습니다.
         </p>
       )}
     </section>

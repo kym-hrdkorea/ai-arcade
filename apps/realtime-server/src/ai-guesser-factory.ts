@@ -18,7 +18,7 @@ function parseTimeoutMs(value: string | undefined): number | undefined {
 
 function parseRetryLimit(value: string | undefined): number | undefined {
   if (!value) {
-    return undefined;
+    return 1;
   }
 
   const parsed = Number.parseInt(value, 10);

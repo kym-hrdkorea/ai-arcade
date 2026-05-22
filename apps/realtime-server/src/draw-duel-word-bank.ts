@@ -3,6 +3,27 @@ export type DrawDuelWordEntry = {
   aliases: string[];
 };
 
+export type DrawDuelWordCategory =
+  | "animal"
+  | "body-symbol"
+  | "food"
+  | "hobby"
+  | "household"
+  | "nature"
+  | "place"
+  | "vehicle";
+
+const wordCategoryRanges = [
+  { category: "animal", end: 30 },
+  { category: "food", end: 65 },
+  { category: "vehicle", end: 85 },
+  { category: "household", end: 130 },
+  { category: "nature", end: 155 },
+  { category: "place", end: 175 },
+  { category: "hobby", end: 190 },
+  { category: "body-symbol", end: 200 },
+] satisfies { category: DrawDuelWordCategory; end: number }[];
+
 export const drawDuelWordBank = [
   { word: "고양이", aliases: ["냥이", "cat"] },
   { word: "강아지", aliases: ["개", "puppy", "dog"] },
@@ -205,3 +226,15 @@ export const drawDuelWordBank = [
   { word: "풍선", aliases: ["balloon"] },
   { word: "깃발", aliases: ["flag"] },
 ] satisfies DrawDuelWordEntry[];
+
+export function drawDuelWordCategoryFor(word: string): DrawDuelWordCategory | undefined {
+  const index = drawDuelWordBank.findIndex((entry) => entry.word === word);
+
+  if (index < 0) {
+    return undefined;
+  }
+
+  const oneBasedIndex = index + 1;
+
+  return wordCategoryRanges.find((range) => oneBasedIndex <= range.end)?.category;
+}

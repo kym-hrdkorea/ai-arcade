@@ -45,24 +45,50 @@ type SmokeStats = {
   roomsStarted: number;
 };
 
-const targetUrl = process.env.LOAD_SMOKE_URL ?? "http://localhost:4000";
-const smokeGame: SmokeGame =
-  process.env.LOAD_SMOKE_GAME === "real-or-ai" ? "real-or-ai" : "draw-duel";
-const requestedClients = parsePositiveInteger(process.env.LOAD_SMOKE_CLIENTS, 100);
+const targetUrl =
+  getCliValue("url") ?? process.env.LOAD_SMOKE_URL ?? "http://127.0.0.1:4000";
+const smokeGame = parseSmokeGame(
+  getCliValue("game") ?? process.env.LOAD_SMOKE_GAME,
+);
+const requestedClients = parsePositiveInteger(
+  getCliValue("clients") ?? process.env.LOAD_SMOKE_CLIENTS,
+  100,
+);
 const requestedRooms = parsePositiveInteger(
-  process.env.LOAD_SMOKE_ROOMS,
+  getCliValue("rooms") ?? process.env.LOAD_SMOKE_ROOMS,
   smokeGame === "real-or-ai" ? 1 : 10,
 );
 const connectTimeoutMs = parsePositiveInteger(
-  process.env.LOAD_SMOKE_CONNECT_TIMEOUT_MS,
+  getCliValue("connect-timeout-ms") ?? process.env.LOAD_SMOKE_CONNECT_TIMEOUT_MS,
   5_000,
 );
-const ackTimeoutMs = parsePositiveInteger(process.env.LOAD_SMOKE_ACK_TIMEOUT_MS, 5_000);
+const ackTimeoutMs = parsePositiveInteger(
+  getCliValue("ack-timeout-ms") ?? process.env.LOAD_SMOKE_ACK_TIMEOUT_MS,
+  5_000,
+);
 const eventTimeoutMs = parsePositiveInteger(
-  process.env.LOAD_SMOKE_EVENT_TIMEOUT_MS,
+  getCliValue("event-timeout-ms") ?? process.env.LOAD_SMOKE_EVENT_TIMEOUT_MS,
   15_000,
 );
 const maxRealOrAiPlayersPerRoom = 100;
+
+function getCliValue(name: string) {
+  const prefix = `--${name}=`;
+  const inline = process.argv.find((argument) => argument.startsWith(prefix));
+
+  if (inline) {
+    return inline.slice(prefix.length);
+  }
+
+  const index = process.argv.indexOf(`--${name}`);
+  const value = process.argv[index + 1];
+
+  return index >= 0 && value && !value.startsWith("--") ? value : undefined;
+}
+
+function parseSmokeGame(value: string | undefined): SmokeGame {
+  return value === "real-or-ai" ? "real-or-ai" : "draw-duel";
+}
 
 function parsePositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);

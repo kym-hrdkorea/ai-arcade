@@ -17,7 +17,7 @@ import {
   renderDrawDuelStrokeSequence,
   type DrawDuelRecordedStroke,
 } from "./draw-duel-snapshot-renderer.js";
-import { drawDuelWordBank } from "./draw-duel-word-bank.js";
+import { drawDuelWordBank, drawDuelWordCategoryFor } from "./draw-duel-word-bank.js";
 import { loadRootEnvFile } from "./env-file.js";
 import {
   OpenAIVisionAIGuesser,
@@ -30,12 +30,18 @@ type BenchmarkFailureKind = "error" | "timeout";
 type BenchmarkSampleResult = {
   category: DrawDuelBenchmarkCategory;
   candidateCorrect: boolean;
+  candidates: string[];
   countsTowardAccuracy: boolean;
   correct: boolean;
   failureKind?: BenchmarkFailureKind;
+  failureMessage?: string;
   frameCount: number;
   genericWrong: boolean;
+  guess?: string;
+  id: string;
   latencyMs?: number;
+  rawCandidates: string[];
+  rawGuess?: string;
   scenario: DrawDuelBenchmarkScenario;
   unknown: boolean;
   word: string;
@@ -47,7 +53,8 @@ type CategorySummary = {
 };
 
 const benchmarkRoundStartedAtMs = 0;
-const defaultBenchmarkMinAccuracy = 0.8;
+const defaultBenchmarkMinAccuracy = 0.9;
+const maxBenchmarkTimeoutMs = 11_500;
 const defaultScenarioThresholds = new Map<DrawDuelBenchmarkScenario, number>([
   ["clear-human", 0.9],
   ["messy-human", 0.75],
@@ -164,6 +171,14 @@ function classifyFailure(error: unknown): BenchmarkFailureKind {
   return "error";
 }
 
+function benchmarkFailureMessage(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return "unknown error";
+  }
+
+  return error.message.replace(/\s+/g, " ").slice(0, 220);
+}
+
 function createBenchmarkRecordedStrokes(
   strokes: DrawDuelAIBenchmarkFixture["strokes"],
 ): DrawDuelRecordedStroke[] {
@@ -178,6 +193,7 @@ function createBenchmarkScoringContext(
 ): AIGuesserScoringContext {
   return {
     aliases: [...fixture.aliases],
+    category: drawDuelWordCategoryFor(fixture.word),
     candidateWords: drawDuelWordBank.map((entry) => entry.word),
     correctWord: fixture.word,
   };
@@ -231,11 +247,16 @@ async function runSample(
     return {
       category: fixture.category,
       candidateCorrect: isBenchmarkCandidateCorrect(output, fixture),
+      candidates: output.candidates?.map((candidate) => candidate.text) ?? [],
       countsTowardAccuracy: fixture.countsTowardAccuracy,
       correct,
       frameCount: strokeSequence.length,
       genericWrong: !correct && isGenericWrongAnswer(output.text),
+      guess: output.text,
+      id: fixture.id,
       latencyMs,
+      rawCandidates: rawOutput.candidates?.map((candidate) => candidate.text) ?? [],
+      rawGuess: rawOutput.text,
       scenario: fixture.scenario,
       unknown,
       word: fixture.word,
@@ -244,11 +265,16 @@ async function runSample(
     return {
       category: fixture.category,
       candidateCorrect: false,
+      candidates: [],
       countsTowardAccuracy: fixture.countsTowardAccuracy,
       correct: false,
       failureKind: classifyFailure(error),
+      failureMessage: benchmarkFailureMessage(error),
       frameCount: strokeSequence.length,
       genericWrong: false,
+      id: fixture.id,
+      latencyMs: Date.now() - startedAt,
+      rawCandidates: [],
       scenario: fixture.scenario,
       unknown: false,
       word: fixture.word,
@@ -368,6 +394,28 @@ function printSummary(
     `Latency ms: p50=${percentile(latencies, 0.5)} p95=${percentile(latencies, 0.95)} max=${Math.max(0, ...latencies)}`,
   );
   console.log(`Timeout/errors: timeout=${timeout} error=${error}`);
+
+  const failureMessages = new Map<string, number>();
+
+  for (const result of scoredResults) {
+    if (!result.failureMessage) {
+      continue;
+    }
+
+    failureMessages.set(
+      result.failureMessage,
+      (failureMessages.get(result.failureMessage) ?? 0) + 1,
+    );
+  }
+
+  if (failureMessages.size > 0) {
+    console.log("Failure messages:");
+
+    for (const [message, count] of failureMessages) {
+      console.log(`- ${count}x ${message}`);
+    }
+  }
+
   console.log(
     `Generic wrong rate: ${percentage(genericWrong, wrong)} (${genericWrong}/${wrong})`,
   );
@@ -389,8 +437,33 @@ function printSummary(
     );
   }
 
+  const misses = scoredResults.filter((result) => !result.correct);
+
+  if (misses.length > 0) {
+    console.log("Missed samples:");
+
+    for (const result of misses) {
+      const failureSuffix = result.failureKind
+        ? ` failure=${result.failureKind} message="${result.failureMessage ?? ""}"`
+        : "";
+      const candidateSuffix =
+        result.candidates.length > 0 ? ` candidates="${result.candidates.join("|")}"` : "";
+      const rawSuffix =
+        result.rawCandidates.length > 0
+          ? ` raw="${result.rawCandidates.join("|")}"`
+          : result.rawGuess
+            ? ` raw="${result.rawGuess}"`
+            : "";
+
+      console.log(
+        `- ${result.id} word="${result.word}" guess="${result.guess ?? ""}" scenario=${result.scenario} category=${result.category}${candidateSuffix}${rawSuffix}${failureSuffix}`,
+      );
+    }
+  }
+
   const failures: string[] = [];
   const p95Latency = percentile(latencies, 0.95);
+  const maxLatency = Math.max(0, ...latencies);
   const timeoutErrorRate = ratio(timeout + error, scoredTotal);
   const unknownRate = ratio(unknown, scoredTotal);
 
@@ -412,6 +485,10 @@ function printSummary(
 
   if (p95Latency > 10_000) {
     failures.push(`p95 latency ${p95Latency}ms is above 10000ms.`);
+  }
+
+  if (maxLatency > maxBenchmarkTimeoutMs) {
+    failures.push(`Max latency ${maxLatency}ms is above ${maxBenchmarkTimeoutMs}ms.`);
   }
 
   if (timeoutErrorRate > 0.05) {
@@ -465,10 +542,13 @@ export async function runDrawDuelAIBenchmark() {
   const reasoningEffort = parseReasoningEffort(
     process.env.DRAW_DUEL_AI_REASONING_EFFORT,
   );
-  const timeoutMs = parseNumber(process.env.DRAW_DUEL_AI_TIMEOUT_MS, 10_000);
+  const timeoutMs = Math.min(
+    maxBenchmarkTimeoutMs,
+    Math.max(1_000, parseNumber(process.env.DRAW_DUEL_AI_TIMEOUT_MS, maxBenchmarkTimeoutMs)),
+  );
   const retryLimit = Math.min(
     3,
-    Math.max(0, parseNumber(process.env.DRAW_DUEL_AI_RETRY_LIMIT, 0)),
+    Math.max(0, parseNumber(process.env.DRAW_DUEL_AI_RETRY_LIMIT, 1)),
   );
   const minAccuracy = parseRatio(
     process.env.DRAW_DUEL_AI_BENCHMARK_MIN_ACCURACY,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AIGuesserInput, AIGuesserScoringContext } from "./ai-guesser.js";
 import { OpenAIVisionAIGuesser } from "./openai-vision-ai-guesser.js";
@@ -112,10 +112,6 @@ function candidateResponse(text: string, confidence = 0.8) {
           text: "dog",
         },
       ],
-      commentarySteps: [
-        "둥근 윤곽과 짧은 선이 보여요.",
-        "작은 동물처럼 보이기도 합니다.",
-      ],
     }),
   });
 }
@@ -158,8 +154,8 @@ describe("OpenAIVisionAIGuesser", () => {
     expect(body.reasoning?.effort).toBe("high");
     expect(body.text?.format?.type).toBe("json_schema");
     expect(body.text?.format?.name).toBe("draw_duel_ai_candidates");
-    expect(body.text?.format?.schema?.required).toContain("commentarySteps");
-    expect(body.text?.format?.schema?.properties).toHaveProperty("commentarySteps");
+    expect(body.text?.format?.schema?.required).toEqual(["candidates"]);
+    expect(body.text?.format?.schema?.properties).not.toHaveProperty("commentarySteps");
     expect(bodyText).not.toContain(scoringContext.correctWord);
     expect(bodyText).not.toContain(scoringContext.aliases[0] ?? "");
     expect(bodyText).not.toContain(scoringContext.candidateWords[1] ?? "");
@@ -167,8 +163,8 @@ describe("OpenAIVisionAIGuesser", () => {
     expect(result.confidence).toBe(0.82);
     expect(result.candidates).toHaveLength(2);
     expect(result.commentarySteps).toEqual([
-      "둥근 윤곽과 짧은 선이 보여요.",
-      "작은 동물처럼 보이기도 합니다.",
+      "이 그림의 큰 형태를 먼저 보고 있어요.",
+      "보이는 단서를 조합해 답을 좁히고 있습니다.",
     ]);
   });
 
@@ -192,9 +188,48 @@ describe("OpenAIVisionAIGuesser", () => {
     const body = requestBodies[0] ?? "";
 
     expect(body).toContain('"model":"gpt-5"');
-    expect(body).toContain('"detail":"auto"');
+    expect(body).toContain('"detail":"low"');
     expect(result.text).toHaveLength(40);
     expect(result.confidence).toBe(1);
+  });
+
+  it("caps the total OpenAI guessing budget at 12 seconds", async () => {
+    vi.useFakeTimers();
+
+    try {
+      let aborted = false;
+      const guesser = new OpenAIVisionAIGuesser({
+        apiKey: "test-key",
+        fetchImpl: async (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init.signal.addEventListener("abort", () => {
+              aborted = true;
+              const error = new Error("aborted");
+              error.name = "AbortError";
+              reject(error);
+            });
+          }),
+        logger: quietLogger,
+        timeoutMs: 30_000,
+      });
+
+      const result = guesser.guess(input, scoringContext).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      await vi.advanceTimersByTimeAsync(11_499);
+      expect(aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const error = await result;
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error).toHaveProperty("message", "aborted");
+      expect(aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects invalid candidate JSON so the room manager can use fallback", async () => {
@@ -268,7 +303,7 @@ describe("OpenAIVisionAIGuesser", () => {
     });
 
     await expect(guesser.guess(input, scoringContext)).rejects.toThrow(
-      "OpenAI Responses API failed with status 400.",
+      "OpenAI Responses API failed with status 400: bad request",
     );
     expect(calls).toBe(1);
   });

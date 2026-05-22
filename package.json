@@ -4,7 +4,13 @@
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "scripts": {
+    "benchmark:load-smoke": "pnpm benchmark:load-smoke:draw-duel",
+    "benchmark:load-smoke:all": "pnpm benchmark:load-smoke:draw-duel && pnpm benchmark:load-smoke:real-or-ai",
+    "benchmark:load-smoke:draw-duel": "pnpm --filter @ai-arcade/shared build && pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=draw-duel --clients=100 --rooms=10",
+    "benchmark:load-smoke:real-or-ai": "pnpm --filter @ai-arcade/shared build && pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=real-or-ai --clients=100 --rooms=1",
+    "benchmark:public-beta": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm e2e && pnpm e2e:serial",
     "dev": "pnpm --parallel --filter web --filter realtime-server dev",
+    "e2e:serial": "playwright test --workers=1",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",

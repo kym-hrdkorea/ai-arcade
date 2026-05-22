@@ -9,6 +9,7 @@ import type {
   EventResponse,
   GameStartNoticePayload,
   RoomJoinedPayload,
+  RoomWatchSnapshotPayload,
   ServerToClientEvents,
 } from "@ai-arcade/shared";
 
@@ -192,6 +193,39 @@ function emitRejoinSnapshot(socket: DrawDuelSocket, result: RejoinResult) {
 
   if (result.snapshot.resultSlide) {
     socket.emit("draw-duel:result-slide-set", result.snapshot.resultSlide);
+  }
+
+  if (result.snapshot.roundResult) {
+    socket.emit("draw-duel:round-result", result.snapshot.roundResult);
+  }
+
+  if (result.snapshot.gameResult) {
+    socket.emit("draw-duel:game-result", result.snapshot.gameResult);
+  }
+}
+
+function emitWatchSnapshot(socket: DrawDuelSocket, result: RoomWatchSnapshotPayload) {
+  socket.emit("room:state", { room: result.room });
+  socket.emit("draw-duel:stroke-history", result.strokeHistory);
+
+  if (result.roundState) {
+    socket.emit("draw-duel:round-state", result.roundState);
+  }
+
+  if (result.timer) {
+    socket.emit("draw-duel:timer-tick", result.timer);
+  }
+
+  if (result.resultSlide) {
+    socket.emit("draw-duel:result-slide-set", result.resultSlide);
+  }
+
+  if (result.roundResult) {
+    socket.emit("draw-duel:round-result", result.roundResult);
+  }
+
+  if (result.gameResult) {
+    socket.emit("draw-duel:game-result", result.gameResult);
   }
 }
 
@@ -448,6 +482,20 @@ io.on("connection", (socket) => {
         "draw-duel:stroke-history",
         roomManager.getStrokeHistory(result.room.roomCode),
       );
+    } catch (error: unknown) {
+      const errorPayload = toErrorPayload(error);
+      sendAck(ack, { ok: false, error: errorPayload });
+      socket.emit("error", errorPayload);
+    }
+  });
+
+  socket.on("room:watch", (payload, ack) => {
+    try {
+      const result = roomManager.getWatchSnapshot(payload.roomCode);
+      socket.data.roomCode = result.room.roomCode;
+      socket.join(result.room.roomCode);
+      sendAck<RoomWatchSnapshotPayload>(ack, { ok: true, data: result });
+      emitWatchSnapshot(socket, result);
     } catch (error: unknown) {
       const errorPayload = toErrorPayload(error);
       sendAck(ack, { ok: false, error: errorPayload });

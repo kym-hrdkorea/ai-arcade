@@ -72,26 +72,34 @@ export function loadRootEnvFile(
   override = false,
 ): LoadRootEnvFileResult {
   const root = findWorkspaceRoot(startDir);
-  const envPath = join(root, ".env");
+  const envPaths = [join(root, ".env"), join(root, ".env.local")].filter((envPath) =>
+    existsSync(envPath),
+  );
 
-  if (!existsSync(envPath)) {
+  if (envPaths.length === 0) {
     return {
       loadedKeys: [],
     };
   }
 
-  const parsed = parseEnvFile(readFileSync(envPath, "utf8"));
+  const shellProvidedKeys = new Set(Object.keys(process.env));
   const loadedKeys: string[] = [];
 
-  for (const [key, value] of Object.entries(parsed)) {
-    if (override || process.env[key] === undefined) {
-      process.env[key] = value;
-      loadedKeys.push(key);
+  for (const envPath of envPaths) {
+    const parsed = parseEnvFile(readFileSync(envPath, "utf8"));
+
+    for (const [key, value] of Object.entries(parsed)) {
+      if (override || !shellProvidedKeys.has(key)) {
+        process.env[key] = value;
+        loadedKeys.push(key);
+      }
     }
   }
 
   return {
     loadedKeys,
-    path: parsePath(envPath).dir ? envPath : undefined,
+    path: parsePath(envPaths[envPaths.length - 1] ?? "").dir
+      ? envPaths.join(";")
+      : undefined,
   };
 }

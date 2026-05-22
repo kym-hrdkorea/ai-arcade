@@ -17,6 +17,7 @@ import {
   roomCreatePayloadSchema,
   roomJoinPayloadSchema,
   roomRejoinPayloadSchema,
+  roomWatchPayloadSchema,
   type DrawClearPayload,
   type DrawDuelGameResultEntry,
   type DrawDuelGameResultPayload,
@@ -46,6 +47,7 @@ import {
   type RoomJoinPayload,
   type RoomRejoinPayload,
   type RoomState,
+  type RoomWatchSnapshotPayload,
 } from "@ai-arcade/shared";
 
 import {
@@ -63,6 +65,7 @@ import {
   type DrawDuelRecordedStroke,
 } from "./draw-duel-snapshot-renderer.js";
 import {
+  drawDuelWordCategoryFor,
   drawDuelWordBank,
   type DrawDuelWordEntry,
 } from "./draw-duel-word-bank.js";
@@ -165,7 +168,9 @@ export type RejoinResult = JoinResult & {
 };
 
 export type RoomSnapshot = {
+  gameResult?: DrawDuelGameResultPayload;
   resultSlide?: DrawDuelResultSlideSetPayload;
+  roundResult?: DrawDuelRoundResultPayload;
   roundState?: DrawDuelRoundStatePayload;
   settings: DrawDuelSettings;
   strokeHistory: DrawStrokeHistoryPayload;
@@ -877,6 +882,30 @@ export class RoomManager {
     return this.createSnapshot(room, playerId, now);
   }
 
+  getWatchSnapshot(roomCode: string, now = new Date()): RoomWatchSnapshotPayload {
+    const parsed = roomWatchPayloadSchema.safeParse({ roomCode });
+
+    if (!parsed.success) {
+      throw new RoomError(
+        "INVALID_ROOM_CODE",
+        parsed.error.issues[0]?.message ?? "방 코드를 확인해 주세요.",
+      );
+    }
+
+    const room = this.requireRoom(parsed.data.roomCode);
+    const snapshot = this.createSnapshot(room, undefined, now);
+
+    return {
+      room: this.toRoomState(room),
+      strokeHistory: snapshot.strokeHistory,
+      roundState: snapshot.roundState,
+      timer: snapshot.timer,
+      resultSlide: snapshot.resultSlide,
+      roundResult: snapshot.roundResult,
+      gameResult: snapshot.gameResult,
+    };
+  }
+
   getPlayerSocketId(roomCode: string, playerId: string): string | undefined {
     return this.rooms
       .get(roomCode)
@@ -1102,6 +1131,7 @@ export class RoomManager {
       );
       const scoringContext = {
         aliases: [...round.aliases],
+        category: drawDuelWordCategoryFor(round.word),
         candidateWords: game.wordBank.map((entry) => entry.word),
         correctWord: round.word,
       };
@@ -1289,16 +1319,22 @@ export class RoomManager {
   }
 
   private finishGame(room: InternalRoom, now: Date): DrawDuelGameResultPayload {
-    const game = this.requireGame(room);
+    this.requireGame(room);
 
     room.status = "ended";
     room.updatedAt = now.toISOString();
+
+    return this.toGameResultPayload(room);
+  }
+
+  private toGameResultPayload(room: InternalRoom): DrawDuelGameResultPayload {
+    const game = this.requireGame(room);
 
     return {
       roomCode: room.roomCode,
       results: this.toGameResultEntries(room),
       rounds: [...game.roundResults],
-      endedAt: now.toISOString(),
+      endedAt: room.updatedAt,
     };
   }
 
@@ -1443,7 +1479,11 @@ export class RoomManager {
     };
   }
 
-  private createSnapshot(room: InternalRoom, playerId: string, now: Date): RoomSnapshot {
+  private createSnapshot(
+    room: InternalRoom,
+    playerId: string | undefined,
+    now: Date,
+  ): RoomSnapshot {
     const snapshot: RoomSnapshot = {
       settings: { ...room.settings },
       strokeHistory: {
@@ -1451,6 +1491,11 @@ export class RoomManager {
         strokes: this.toPublicStrokeHistory(room),
       },
     };
+
+    if (room.status === "ended" && room.game) {
+      snapshot.gameResult = this.toGameResultPayload(room);
+      return snapshot;
+    }
 
     if (room.status === "playing" && room.game?.currentRound) {
       snapshot.roundState = this.toRoundStatePayload(room);
@@ -1469,6 +1514,9 @@ export class RoomManager {
           roundId: room.game.currentRound.roundId,
           slide: room.game.currentRound.currentResultSlide ?? "ai-answer",
         };
+        snapshot.roundResult = room.game.roundResults.find(
+          (result) => result.roundId === room.game?.currentRound?.roundId,
+        );
       }
     }
 

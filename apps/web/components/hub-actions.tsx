@@ -98,6 +98,11 @@ export function HubActions({
       return;
     }
 
+    if (selectedGame.id === "draw-duel") {
+      window.location.href = `/join/${roomCode}`;
+      return;
+    }
+
     const query = new URLSearchParams({ roomCode });
     window.location.href = `${selectedGame.route}/join?${query.toString()}`;
   }

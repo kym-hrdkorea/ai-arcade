@@ -16,34 +16,15 @@
 
 ```bash
 pnpm install
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm e2e
+pnpm benchmark:public-beta
 ```
+
+공개 베타 플레이어 기준과 점수표는 `docs/PUBLIC_BETA_BENCHMARK.md`를 따른다.
 
 실시간 서버 스모크:
 
 ```bash
-LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smoke
-```
-
-Real or AI 100명 한 방 스모크:
-
-PowerShell:
-
-```powershell
-$env:LOAD_SMOKE_GAME="real-or-ai"
-$env:LOAD_SMOKE_CLIENTS="100"
-$env:LOAD_SMOKE_ROOMS="1"
-pnpm --filter realtime-server load:smoke
-```
-
-macOS/Linux shell:
-
-```bash
-LOAD_SMOKE_GAME=real-or-ai LOAD_SMOKE_CLIENTS=100 LOAD_SMOKE_ROOMS=1 pnpm --filter realtime-server load:smoke
+pnpm benchmark:load-smoke:all
 ```
 
 판단 기준:
@@ -256,17 +237,13 @@ Railway:
 기능 수정 후:
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm e2e
+pnpm benchmark:public-beta
 ```
 
 필요 시 realtime-server가 떠 있는 상태에서:
 
 ```bash
-LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smoke
+pnpm benchmark:load-smoke:all
 ```
 
 배포 루틴:
@@ -284,13 +261,15 @@ LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smok
 운영 스모크 기록:
 
 ```bash
-LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smoke
+pnpm benchmark:load-smoke:all
 ```
 
-Real or AI 스모크:
+가변 조건 스모크:
 
 ```bash
-LOAD_SMOKE_GAME=real-or-ai LOAD_SMOKE_CLIENTS=100 LOAD_SMOKE_ROOMS=1 pnpm --filter realtime-server load:smoke
+pnpm --filter @ai-arcade/shared build
+pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=draw-duel --clients=20 --rooms=4
+pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=real-or-ai --clients=100 --rooms=1
 ```
 
 이 결과는 행사 전 위험 확인용이다. 100명 운영 가능성을 단정하는 근거로 쓰지 않는다.
@@ -427,7 +406,7 @@ AI 오류/timeout 수:
 방장 운영 체크리스트:
 
 - 대기 상태에서만 라운드 수, 보기 시간, 준비 시간을 바꾼다.
-- 게임 시작 후 설정 요약이 잠금 상태로 보이는지 확인한다.
+- 게임 시작 후 모바일 진행 화면에는 설정 요약을 남기지 않고, 필요한 운영 동작만 운영 패널에서 확인한다.
 - 운영 패널에서 현재 라운드, 남은 시간, 제출 인원이 읽히는지 확인한다.
 - 진행 중에는 라운드 스킵과 방 리셋만 필요한 순간에 사용한다.
 - 라운드 결과 후 다음 진행 버튼으로 다음 라운드 또는 최종 랭킹으로 넘어간다.
@@ -444,9 +423,25 @@ AI 오류/timeout 수:
 
 모바일 확인 항목:
 
-- 후보 A/B 카드, 확대 버튼, 제출 버튼이 세로 화면에서 겹치지 않는다.
+- 라운드 진행 중 게스트 화면에 방 코드, 입장 완료 알림, 닉네임 카드, 설정 요약이 크게 남아 있지 않다.
+- 카운트다운 화면도 대기실처럼 보이지 않고, 방 코드/서버 배지/설정 요약 없이 중앙의 준비 시간만 간결하게 보여준다.
+- 라운드 진행 중 호스트 모바일 화면도 설정 요약이 플레이 흐름 아래에 반복 노출되지 않는다.
+- 진행 중 나가기 버튼은 라운드 정보줄 안에서 접근 가능하고 별도 로비 헤더가 첫 화면을 차지하지 않는다.
+- 호스트 운영 패널에는 현재 라운드, 남은 시간, 제출 인원, 라운드 스킵, 방 리셋이 남아 있지만 첫 플레이 화면을 덮지 않는다.
+- 대기실이나 운영 패널을 아래로 스크롤한 상태에서 라운드가 시작되어도 화면이 자동으로 현재 라운드 판별 영역으로 돌아온다.
+- 후보 A/B 사진 위에 라벨, 확대 버튼, 안내 박스, 제출 박스가 겹치지 않는다.
+- 후보 A/B 카드, 확대 버튼, 제출 버튼이 세로 화면에서 서로 겹치지 않는다.
+- 390px 폭, 844px 높이 기준으로 후보 B 카드 시작점과 제출 버튼이 첫 viewport 안에 들어온다.
+- 360px 안팎의 좁은 모바일 폭에서도 후보 B와 제출 흐름이 과한 장식 여백 때문에 크게 밀리지 않는다.
+- 375px 폭, 667px 높이처럼 주소창 때문에 체감 높이가 짧은 모바일 화면에서도 제출 액션이 첫 viewport 안에서 잘리지 않는다.
+- 360px 폭, 640px 높이처럼 매우 짧은 모바일 화면에서도 제출 액션 전체가 첫 viewport 안에 남고, 하단 제스처 영역과 붙지 않는 작은 여백이 있다.
+- 후보 사진은 모바일 390px viewport에서 가로 폭을 충분히 쓰고, 불필요한 중첩 패널 때문에 작아지지 않는다.
+- 제출 영역 보조 문구는 좁은 화면에서도 말줄임으로 잘리지 않는 짧은 문구로 보인다.
+- 제출 후 제출 영역과 버튼이 완료 상태로 바뀌며, 같은 제출 액션이 아직 남아 있는 것처럼 보이지 않고 버튼 폭이 갑자기 줄어들지 않는다.
+- 로컬 개발 확인 화면에서도 프레임워크 인디케이터나 임시 디버그 UI가 제출 버튼, 확대 버튼, 사진 영역을 덮지 않는다.
 - 터치 환경에서는 inline hover lens 대신 확대 버튼과 모달로 확인한다.
 - 확대 모달이 390px 너비 viewport 안에 들어오고 닫기 버튼에 접근할 수 있다.
+- 확대 모달과 제출 영역은 모바일 safe area를 고려해 닫기 버튼과 주요 액션이 노치, 홈 인디케이터, 브라우저 제스처 영역에 붙지 않는다.
 
 새 창 테스트 서버 재시작:
 
@@ -483,7 +478,8 @@ pnpm e2e
 대상: 내부 20명
 목적: 실시간 안정성 확인
 권장 스모크:
-LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smoke
+pnpm --filter @ai-arcade/shared build
+pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=draw-duel --clients=20 --rooms=4
 필수 기록:
 - 날짜/장소:
 - 네트워크:
@@ -501,7 +497,8 @@ LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smok
 대상: 실제 행사 환경 30~50명
 목적: 네트워크와 진행 흐름 확인
 권장 스모크:
-LOAD_SMOKE_CLIENTS=50 LOAD_SMOKE_ROOMS=5 pnpm --filter realtime-server load:smoke
+pnpm --filter @ai-arcade/shared build
+pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=draw-duel --clients=50 --rooms=5
 필수 기록:
 - 날짜/장소:
 - 행사장 Wi-Fi/모바일 데이터:
@@ -522,14 +519,14 @@ LOAD_SMOKE_CLIENTS=50 LOAD_SMOKE_ROOMS=5 pnpm --filter realtime-server load:smok
 로컬 realtime-server 실행 후 다음 명령으로 Socket.IO 스모크를 실행한다.
 
 ```bash
-pnpm --filter realtime-server load:smoke
+pnpm benchmark:load-smoke:all
 ```
 
 기본 시나리오:
 
 - 100 clients
 - 10 rooms
-- Draw Duel room당 최대 100명
+- Draw Duel room당 최대 10명
 - 방 생성/참가/게임 시작
 - 일부 stroke/guess 이벤트 송신
 
@@ -555,6 +552,33 @@ Real or AI 시나리오:
 최근 로컬 기록:
 
 ```txt
+2026-05-21 공개 베타 로컬 스모크 - Draw Duel
+Command: pnpm benchmark:load-smoke:draw-duel
+Target: http://127.0.0.1:4000
+Requested clients: 100
+Requested rooms: 10
+Connected clients: 100
+Connection success rate: 100.0%
+Rooms created: 10
+Rooms started: 10
+Answer submissions: 30
+Event errors: 0
+Elapsed: 428ms
+
+2026-05-21 공개 베타 로컬 스모크 - Real or AI
+Command: pnpm benchmark:load-smoke:real-or-ai
+Target: http://127.0.0.1:4000
+Requested clients: 100
+Requested rooms: 1
+Connected clients: 100
+Connection success rate: 100.0%
+Rooms created: 1
+Rooms started: 1
+Answer submissions: 100
+Event errors: 0
+Elapsed: 4013ms
+Note: 100명 운영 보장이 아니라 로컬 단일 프로세스 기준 스모크 결과로만 기록한다.
+
 2026-05-14 로컬 스모크
 Target: http://localhost:4000
 Requested clients: 100
@@ -608,10 +632,10 @@ Note: 100명 운영 보장이 아니라 로컬 단일 프로세스 기준 스모
 DRAW_DUEL_AI_PROVIDER=openai
 OPENAI_API_KEY=...
 DRAW_DUEL_AI_MODEL=gpt-5
-DRAW_DUEL_AI_TIMEOUT_MS=15000
-DRAW_DUEL_AI_DETAIL=high
+DRAW_DUEL_AI_TIMEOUT_MS=11500
+DRAW_DUEL_AI_DETAIL=low
 DRAW_DUEL_AI_REASONING_EFFORT=low
-DRAW_DUEL_AI_RETRY_LIMIT=0
+DRAW_DUEL_AI_RETRY_LIMIT=1
 ```
 
 30개 deterministic stroke fixture 기준 리허설:
@@ -625,12 +649,13 @@ pnpm --filter realtime-server ai:bench
 - stdout에는 accuracy, unknown rate, category별 accuracy, latency p50/p95/max, timeout/error count만 남긴다.
 - API key, 원본 request body, base64 image, 원본 이미지는 출력하거나 저장하지 않는다.
 - AI 입력은 full normalized final image, stroke bounding box 기반 cropped normalized final image, 최대 4개의 deduped stroke sequence frame으로 구성한다.
+- OpenAI 호출 전 서버 로컬 canonical sketch template을 먼저 확인한다. 기준 스케치와 일치하면 provider 호출 없이 즉시 AI 후보를 반환한다.
 - 결과 공개 전 `draw-duel:ai-thinking`은 공개용 관찰 코멘트만 전송한다. 비공개 reasoning이나 정답/alias/candidate word bank는 외부 요청 또는 클라이언트 payload에 포함하지 않는다.
 
 해석 기준:
 
-1. timeout/error가 10%를 넘으면 `DRAW_DUEL_AI_REASONING_EFFORT=low`를 유지하고 `DRAW_DUEL_AI_TIMEOUT_MS=15000` 이상에서 추가 리허설한다.
-2. 비용 보호를 위해 `DRAW_DUEL_AI_RETRY_LIMIT` 기본값은 `0`으로 둔다. retry가 필요하면 timeout, 네트워크 오류, 5xx에만 적용한다.
+1. timeout/error가 10%를 넘으면 provider 상태와 이미지 입력 품질을 먼저 확인한다. AI 추측 전체 예산은 최대 12초이므로 `DRAW_DUEL_AI_TIMEOUT_MS`는 11500을 넘기지 않는다.
+2. 12초 예산 안에서 `DRAW_DUEL_AI_RETRY_LIMIT=1`을 기본 리허설값으로 둔다. retry는 timeout, 네트워크 오류, 5xx, 파싱 실패에만 적용한다.
 3. 오답 중 “과일/동물/탈것”처럼 과도하게 일반적인 답이 20%를 넘으면 prompt의 구체 명사 선호 문구를 유지하거나 강화한다.
 4. 두 참가자로 방을 만들고 실제 그림을 그린 뒤, `ai-guessing` 대기 화면에서 관찰 코멘트가 보이고 `draw-duel:ai-thinking` 이후 `draw-duel:ai-guess`, `draw-duel:round-result`가 순서대로 도착하는지 확인한다.
 5. 라운드 스킵, 방 리셋, 재접속, 최종 결과가 AI 오류 뒤에도 정상 동작하는지 확인한다.

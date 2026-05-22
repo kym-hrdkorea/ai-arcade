@@ -47,6 +47,7 @@ function updateSettings(
     drawerMode: "rotate",
     maxRounds: 2,
     roundDurationSeconds: 30,
+    screenJoinCodeVisibility: "waiting-only",
   },
   socketId = "socket-host",
 ) {
@@ -172,6 +173,7 @@ describe("RoomManager", () => {
       drawerMode: "host-only",
       maxRounds: 5,
       roundDurationSeconds: 45,
+      screenJoinCodeVisibility: "waiting-only",
     });
     expect(result.room.players).toHaveLength(1);
   });
@@ -285,6 +287,7 @@ describe("RoomManager", () => {
           drawerMode: "rotate",
           maxRounds: 3,
           roundDurationSeconds: 60,
+          screenJoinCodeVisibility: "waiting-only",
         },
         "socket-guest",
       ),
@@ -294,12 +297,14 @@ describe("RoomManager", () => {
       drawerMode: "rotate",
       maxRounds: 3,
       roundDurationSeconds: 60,
+      screenJoinCodeVisibility: "always",
     });
 
     expect(updated.settings).toEqual({
       drawerMode: "rotate",
       maxRounds: 3,
       roundDurationSeconds: 60,
+      screenJoinCodeVisibility: "always",
     });
 
     manager.startGame(
@@ -315,6 +320,7 @@ describe("RoomManager", () => {
         drawerMode: "host-only",
         maxRounds: 5,
         roundDurationSeconds: 45,
+        screenJoinCodeVisibility: "waiting-only",
       }),
     ).toThrow(RoomError);
   });
@@ -366,6 +372,7 @@ describe("RoomManager", () => {
       drawerMode: "host-only",
       maxRounds: 4,
       roundDurationSeconds: 90,
+      screenJoinCodeVisibility: "waiting-only",
     });
 
     const started = manager.startGame(
@@ -695,7 +702,7 @@ describe("RoomManager", () => {
     expect(manager.getStrokeHistory(created.room.roomCode).strokes).toHaveLength(2);
   });
 
-  it("uses only the top AI candidate as the official scored guess", async () => {
+  it("scores a correct AI candidate even when it is not first", async () => {
     const aiGuesser = new FixedAIGuesser({
       confidence: 0.7,
       text: "placeholder",
@@ -710,7 +717,9 @@ describe("RoomManager", () => {
       "socket-host",
       startTime,
     );
-    const wrongGuess = wrongAnswerFor(started.word.word);
+    const wrongGuess =
+      drawDuelWordBank.find((entry) => entry.word !== started.word.word)?.word ??
+      wrongAnswerFor(started.word.word);
 
     aiGuesser.setOutput({
       candidates: [
@@ -731,9 +740,9 @@ describe("RoomManager", () => {
     const completed = await completeAIGuessing(manager, created.room.roomCode);
     const aiGuess = completed.aiGuess;
 
-    expect(aiGuess?.text).toBe(wrongGuess);
-    expect(aiGuess?.confidence).toBe(0.7);
-    expect(aiGuess?.isCorrect).toBe(false);
+    expect(aiGuess?.text).toBe(started.word.word);
+    expect(aiGuess?.confidence).toBe(0.2);
+    expect(aiGuess?.isCorrect).toBe(true);
   });
 
   it("falls back to a no-score AI guess and still creates a result when the provider fails", async () => {
@@ -981,6 +990,7 @@ describe("RoomManager", () => {
       drawerMode: "rotate",
       maxRounds: 2,
       roundDurationSeconds: 45,
+      screenJoinCodeVisibility: "waiting-only",
     });
     const started = manager.startGame(
       {
@@ -1038,6 +1048,7 @@ describe("RoomManager", () => {
       drawerMode: "host-only",
       maxRounds: 3,
       roundDurationSeconds: 45,
+      screenJoinCodeVisibility: "waiting-only",
     });
 
     const first = manager.startGame(
@@ -1101,6 +1112,7 @@ describe("RoomManager", () => {
       drawerMode: "host-only",
       maxRounds: 10,
       roundDurationSeconds: 45,
+      screenJoinCodeVisibility: "waiting-only",
     });
 
     const seenWords: string[] = [];
@@ -1149,6 +1161,7 @@ describe("RoomManager", () => {
       drawerMode: "rotate",
       maxRounds: 2,
       roundDurationSeconds: 45,
+      screenJoinCodeVisibility: "waiting-only",
     });
     const started = manager.startGame(
       {
@@ -1371,6 +1384,7 @@ describe("RoomManager", () => {
       drawerMode: "rotate",
       maxRounds: 7,
       roundDurationSeconds: 60,
+      screenJoinCodeVisibility: "always",
     });
     manager.startGame(
       {
@@ -1404,6 +1418,7 @@ describe("RoomManager", () => {
       drawerMode: "rotate",
       maxRounds: 7,
       roundDurationSeconds: 60,
+      screenJoinCodeVisibility: "always",
     });
     expect(reset.room.status).toBe("waiting");
     expect(manager.getStrokeHistory(created.room.roomCode).strokes).toHaveLength(0);

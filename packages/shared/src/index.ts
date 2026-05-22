@@ -19,6 +19,7 @@ export type {
   DrawDuelRoundState,
   DrawDuelRoundStatePayload,
   DrawDuelRoundStatus,
+  DrawDuelScreenJoinCodeVisibility,
   DrawDuelScoreEntry,
   DrawDuelScoreState,
   DrawDuelSettings,
@@ -48,6 +49,8 @@ export type {
   RoomState,
   RoomStatePayload,
   RoomStatus,
+  RoomWatchPayload,
+  RoomWatchSnapshotPayload,
   ServerReadyPayload,
   ServerToClientEvents,
 } from "./types/realtime.js";
@@ -163,6 +166,7 @@ export {
   drawDuelResultSlideSetPayloadSchema,
   drawDuelRoundDurationSecondsSchema,
   drawDuelRoundSkipPayloadSchema,
+  drawDuelScreenJoinCodeVisibilitySchema,
   drawDuelSettingsSchema,
   drawDuelSettingsUpdatePayloadSchema,
   drawGuessSubmitPayloadSchema,
@@ -177,4 +181,5 @@ export {
   roomJoinPayloadSchema,
   roomLeavePayloadSchema,
   roomRejoinPayloadSchema,
+  roomWatchPayloadSchema,
 } from "./types/realtime.js";

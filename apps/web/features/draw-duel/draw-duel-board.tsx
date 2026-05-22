@@ -8,7 +8,16 @@ import type {
   RoomState,
   ServerToClientEvents,
 } from "@ai-arcade/shared";
-import { Brush, Circle, Eraser, Eye, PenLine, Trash2 } from "lucide-react";
+import {
+  Brush,
+  Circle,
+  Eraser,
+  Eye,
+  Palette,
+  PenLine,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -19,15 +28,18 @@ import {
 import type { Socket } from "socket.io-client";
 
 type DrawDuelSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
+type DrawDuelViewerRole = "drawer" | "guesser" | "watcher";
 
 type DrawDuelBoardProps = {
   canDraw: boolean;
   compact?: boolean;
   currentPlayerId: string | null;
+  drawingPrompt?: string | null;
   drawStatus: string;
   initialStrokes: DrawStrokePayload[];
   room: RoomState;
   socket: DrawDuelSocket | null;
+  viewerRole?: DrawDuelViewerRole;
 };
 
 type ActiveStroke = {
@@ -176,10 +188,12 @@ export function DrawDuelBoard({
   canDraw,
   compact = false,
   currentPlayerId,
+  drawingPrompt = null,
   drawStatus,
   initialStrokes,
   room,
   socket,
+  viewerRole = "watcher",
 }: DrawDuelBoardProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const historyRef = useRef<DrawStrokePayload[]>([]);
@@ -189,8 +203,16 @@ export function DrawDuelBoard({
   const [color, setColor] = useState(defaultColor);
   const [width, setWidth] = useState(8);
   const [boardMessage, setBoardMessage] = useState<string | null>(null);
+  const [isToolPaletteOpen, setIsToolPaletteOpen] = useState(false);
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
 
   const canUseTools = Boolean(socket && currentPlayerId && canDraw);
+  const roleLabel = canUseTools
+    ? "출제자"
+    : viewerRole === "guesser"
+      ? "정답자"
+      : "관전";
+  const selectedWidthOption = widthOptions.find((option) => option.value === width) ?? widthOptions[1];
 
   const rememberStroke = useCallback((stroke: DrawStrokePayload) => {
     historyRef.current.push(stroke);
@@ -481,7 +503,11 @@ export function DrawDuelBoard({
     socket.emit("draw-duel:canvas-clear", payload, (response) => {
       if (!response.ok) {
         setBoardMessage(response.error.message);
+        setIsClearConfirmOpen(false);
+        return;
       }
+
+      setIsClearConfirmOpen(false);
     });
   }
 
@@ -496,87 +522,202 @@ export function DrawDuelBoard({
           <p className="mt-1 text-sm leading-5 text-muted-gray sm:mt-2 sm:leading-6">{drawStatus}</p>
         </div>
         <span className={canUseTools ? "arcade-badge arcade-badge-green" : "arcade-badge"}>
-          {canUseTools ? "드로어" : "관전"}
+          {roleLabel}
         </span>
       </div>
 
       {canUseTools ? (
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          <button
-            aria-label="펜"
-            aria-pressed={tool === "pen"}
-            className={`arcade-button h-11 w-11 p-0 sm:h-12 sm:w-12 ${
-              tool === "pen" ? "arcade-button-secondary" : "arcade-button-ghost"
-            }`}
-            onClick={() => setTool("pen")}
-            title="펜"
-            type="button"
-          >
-            <PenLine aria-hidden="true" size={18} />
-          </button>
-          <button
-            aria-label="지우개"
-            aria-pressed={tool === "eraser"}
-            className={`arcade-button h-11 w-11 p-0 sm:h-12 sm:w-12 ${
-              tool === "eraser" ? "arcade-button-secondary" : "arcade-button-ghost"
-            }`}
-            onClick={() => setTool("eraser")}
-            title="지우개"
-            type="button"
-          >
-            <Eraser aria-hidden="true" size={18} />
-          </button>
-
-          <div className="flex flex-wrap gap-1.5 sm:gap-2" aria-label="펜 굵기">
-            {widthOptions.map((option) => (
-              <button
-                aria-label={option.title}
-                aria-pressed={width === option.value}
-                className={`arcade-button h-11 min-w-11 px-2 sm:h-12 sm:min-w-12 sm:px-3 ${
-                  width === option.value ? "arcade-button-primary" : "arcade-button-ghost"
-                }`}
-                key={option.value}
-                onClick={() => setWidth(option.value)}
-                title={option.title}
-                type="button"
-              >
-                <Circle aria-hidden="true" fill="currentColor" size={option.value + 8} />
-                <span className="sr-only">{option.label}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap gap-1.5 sm:gap-2" aria-label="펜 색상">
-            {colorOptions.map((option) => (
-              <button
-                aria-label={option.label}
-                aria-pressed={color === option.value}
-                className={`h-11 w-11 border-2 shadow-pixel sm:h-12 sm:w-12 ${
-                  color === option.value ? "border-screen-white" : "border-line-gray"
-                }`}
-                disabled={tool === "eraser"}
-                key={option.value}
-                onClick={() => setColor(option.value)}
-                style={{ backgroundColor: option.value }}
-                title={option.label}
-                type="button"
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:hidden">
+            <button
+              aria-label="펜"
+              aria-pressed={tool === "pen"}
+              className={`arcade-button h-11 w-11 p-0 ${
+                tool === "pen" ? "arcade-button-secondary" : "arcade-button-ghost"
+              }`}
+              onClick={() => setTool("pen")}
+              title="펜"
+              type="button"
+            >
+              <PenLine aria-hidden="true" size={18} />
+            </button>
+            <button
+              aria-label="지우개"
+              aria-pressed={tool === "eraser"}
+              className={`arcade-button h-11 w-11 p-0 ${
+                tool === "eraser" ? "arcade-button-secondary" : "arcade-button-ghost"
+              }`}
+              onClick={() => setTool("eraser")}
+              title="지우개"
+              type="button"
+            >
+              <Eraser aria-hidden="true" size={18} />
+            </button>
+            <button
+              aria-expanded={isToolPaletteOpen}
+              aria-label="색상과 굵기 열기"
+              className="arcade-button arcade-button-ghost h-11 min-w-11 px-2"
+              onClick={() => setIsToolPaletteOpen((current) => !current)}
+              type="button"
+            >
+              <Palette aria-hidden="true" size={18} />
+              <span
+                aria-hidden="true"
+                className="inline-block h-5 w-5 border border-screen-white"
+                style={{ backgroundColor: color }}
               />
-            ))}
+            </button>
+            <button
+              aria-expanded={isToolPaletteOpen}
+              aria-label={`굵기 ${selectedWidthOption.label}`}
+              className="arcade-button arcade-button-ghost h-11 min-w-11 px-2"
+              onClick={() => setIsToolPaletteOpen((current) => !current)}
+              type="button"
+            >
+              <SlidersHorizontal aria-hidden="true" size={18} />
+              <span className="font-arcade text-xs">{selectedWidthOption.label}</span>
+            </button>
+            <button
+              aria-label="전체 지우기"
+              className="arcade-button arcade-button-danger h-11 w-11 p-0"
+              onClick={() => setIsClearConfirmOpen(true)}
+              title="전체 지우기"
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={18} />
+            </button>
           </div>
 
-          <button
-            aria-label="전체 지우기"
-            className="arcade-button arcade-button-danger h-11 w-11 p-0 sm:h-12 sm:w-12"
-            onClick={clearBoard}
-            title="전체 지우기"
-            type="button"
-          >
-            <Trash2 aria-hidden="true" size={18} />
-          </button>
+          {isToolPaletteOpen ? (
+            <div className="grid gap-2 border border-line-gray bg-console-black p-2 sm:hidden">
+              <div className="flex flex-wrap gap-1.5" aria-label="펜 굵기">
+                {widthOptions.map((option) => (
+                  <button
+                    aria-label={option.title}
+                    aria-pressed={width === option.value}
+                    className={`arcade-button h-11 min-w-11 px-2 ${
+                      width === option.value ? "arcade-button-primary" : "arcade-button-ghost"
+                    }`}
+                    key={option.value}
+                    onClick={() => setWidth(option.value)}
+                    title={option.title}
+                    type="button"
+                  >
+                    <Circle aria-hidden="true" fill="currentColor" size={option.value + 8} />
+                    <span className="sr-only">{option.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5" aria-label="펜 색상">
+                {colorOptions.map((option) => (
+                  <button
+                    aria-label={option.label}
+                    aria-pressed={color === option.value}
+                    className={`h-11 w-11 border-2 shadow-pixel ${
+                      color === option.value ? "border-screen-white" : "border-line-gray"
+                    }`}
+                    key={option.value}
+                    onClick={() => {
+                      setColor(option.value);
+                      setTool("pen");
+                    }}
+                    style={{ backgroundColor: option.value }}
+                    title={option.label}
+                    type="button"
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="hidden flex-wrap items-center gap-2 sm:flex">
+            <button
+              aria-label="펜"
+              aria-pressed={tool === "pen"}
+              className={`arcade-button h-12 w-12 p-0 ${
+                tool === "pen" ? "arcade-button-secondary" : "arcade-button-ghost"
+              }`}
+              onClick={() => setTool("pen")}
+              title="펜"
+              type="button"
+            >
+              <PenLine aria-hidden="true" size={18} />
+            </button>
+            <button
+              aria-label="지우개"
+              aria-pressed={tool === "eraser"}
+              className={`arcade-button h-12 w-12 p-0 ${
+                tool === "eraser" ? "arcade-button-secondary" : "arcade-button-ghost"
+              }`}
+              onClick={() => setTool("eraser")}
+              title="지우개"
+              type="button"
+            >
+              <Eraser aria-hidden="true" size={18} />
+            </button>
+
+            <div className="flex flex-wrap gap-2" aria-label="펜 굵기">
+              {widthOptions.map((option) => (
+                <button
+                  aria-label={option.title}
+                  aria-pressed={width === option.value}
+                  className={`arcade-button h-12 min-w-12 px-3 ${
+                    width === option.value ? "arcade-button-primary" : "arcade-button-ghost"
+                  }`}
+                  key={option.value}
+                  onClick={() => setWidth(option.value)}
+                  title={option.title}
+                  type="button"
+                >
+                  <Circle aria-hidden="true" fill="currentColor" size={option.value + 8} />
+                  <span className="sr-only">{option.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2" aria-label="펜 색상">
+              {colorOptions.map((option) => (
+                <button
+                  aria-label={option.label}
+                  aria-pressed={color === option.value}
+                  className={`h-12 w-12 border-2 shadow-pixel ${
+                    color === option.value ? "border-screen-white" : "border-line-gray"
+                  }`}
+                  disabled={tool === "eraser"}
+                  key={option.value}
+                  onClick={() => setColor(option.value)}
+                  style={{ backgroundColor: option.value }}
+                  title={option.label}
+                  type="button"
+                />
+              ))}
+            </div>
+
+            <button
+              aria-label="전체 지우기"
+              className="arcade-button arcade-button-danger h-12 w-12 p-0"
+              onClick={() => setIsClearConfirmOpen(true)}
+              title="전체 지우기"
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={18} />
+            </button>
+          </div>
         </div>
       ) : null}
 
       <div className="relative">
+        {drawingPrompt && canUseTools ? (
+          <div
+            className="mb-2 flex items-center justify-between gap-3 border border-coin-yellow bg-console-black px-3 py-2 text-sm font-black sm:hidden"
+            data-testid="draw-duel-prompt-chip"
+          >
+            <span className="text-muted-gray">제시어</span>
+            <strong className="min-w-0 truncate font-arcade text-coin-yellow">
+              {drawingPrompt}
+            </strong>
+          </div>
+        ) : null}
         <canvas
           aria-label="Draw Duel drawing canvas"
           className={`block aspect-[8/5] max-h-[42svh] w-full border-2 border-line-gray bg-screen-white sm:max-h-none ${
@@ -600,6 +741,33 @@ export function DrawDuelBoard({
       {boardMessage ? (
         <div className="border-2 border-joystick-red bg-console-black p-3 text-sm font-bold text-red-200">
           {boardMessage}
+        </div>
+      ) : null}
+
+      {isClearConfirmOpen ? (
+        <div
+          className="grid gap-3 border-2 border-joystick-red bg-console-black p-3"
+          role="dialog"
+        >
+          <p className="text-sm font-bold text-red-200">
+            현재 그림을 모두 지울까요?
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              className="arcade-button arcade-button-ghost"
+              onClick={() => setIsClearConfirmOpen(false)}
+              type="button"
+            >
+              취소
+            </button>
+            <button
+              className="arcade-button arcade-button-danger"
+              onClick={clearBoard}
+              type="button"
+            >
+              전체 지우기
+            </button>
+          </div>
         </div>
       ) : null}
     </section>

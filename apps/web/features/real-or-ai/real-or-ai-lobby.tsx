@@ -40,7 +40,6 @@ import {
   RotateCcw,
   Settings2,
   Ticket,
-  Timer,
   Trophy,
   UserPlus,
   Users,
@@ -76,23 +75,6 @@ type RealOrAiLobbyProps = {
 
 const realtimeUrl = process.env.NEXT_PUBLIC_REALTIME_URL ?? "http://localhost:4000";
 const reconnectStorageKey = "real-or-ai:reconnect";
-const roundDurationGroups: {
-  durations: readonly RealOrAiRoundDurationSeconds[];
-  help: string;
-  title: string;
-}[] = [
-  {
-    durations: [5, 10, 15],
-    help: "짧게 즐기는 빠른 라운드",
-    title: "빠른 진행",
-  },
-  {
-    durations: [30, 45, 60],
-    help: "실제 사진을 꼼꼼히 비교",
-    title: "꼼꼼히 보기",
-  },
-];
-
 function normalizeRoomCode(value: string) {
   return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 6);
 }
@@ -134,7 +116,7 @@ function roomStatusHelp(status: RealOrAiRoomState["status"]) {
     answering: "두 후보를 돋보기로 확인하고 진짜 사진을 골라 주세요.",
     countdown: "곧 진짜 사진 고르기가 시작됩니다.",
     "final-result": "최종 순위를 확인하고 다음 게임을 준비합니다.",
-    "round-result": "라운드가 끝났습니다. 호스트가 다음 진행을 선택합니다.",
+    "round-result": "라운드 결과를 확인하고 다음 라운드를 준비합니다.",
     waiting: "참가자가 모이면 호스트가 설정을 확인하고 시작합니다.",
   };
 
@@ -257,6 +239,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     useState<RealOrAiAnswerAckPayload | null>(null);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [isAdvancingRound, setIsAdvancingRound] = useState(false);
+  const [isSkippingRound, setIsSkippingRound] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
@@ -422,6 +405,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSkippingRound(false);
     });
 
     socket.on("real-or-ai:round-start", (payload) => {
@@ -433,6 +417,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSkippingRound(false);
     });
 
     socket.on("real-or-ai:timer-tick", (payload) => {
@@ -455,6 +440,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setTimer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSkippingRound(false);
     });
 
     socket.on("real-or-ai:game-result", (payload) => {
@@ -467,6 +453,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSkippingRound(false);
     });
 
     socket.on("real-or-ai:error", (payload) => {
@@ -514,10 +501,11 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
         : roundResult
           ? roundResult.entries.filter((entry) => entry.selectedCandidateId).length
           : 0;
-  const canSkipRound = Boolean(isHost && room?.status === "answering");
-  const canAdvanceFromOperations = Boolean(
-    isHost && room?.status === "round-result" && roundResult && !isAdvancingRound,
-  );
+  const operationPlayerCount =
+    activeRound && answerCount?.roundId === activeRound.roundId
+      ? answerCount.playerCount
+      : connectedPlayerCount;
+  const canSkipRound = Boolean(isHost && room?.status === "answering" && !isSkippingRound);
 
   function handleJoined(response: EventResponse<RealOrAiRoomJoinedPayload>) {
     if (!response.ok) {
@@ -539,6 +527,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     setSubmittedAnswer(null);
     setIsSubmittingAnswer(false);
     setIsAdvancingRound(false);
+    setIsSkippingRound(false);
     setErrorMessage(null);
     setNoticeMessage("방에 입장했습니다.");
   }
@@ -606,6 +595,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSkippingRound(false);
       setNoticeMessage("방에서 나왔습니다.");
     });
   }
@@ -717,13 +707,17 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       return;
     }
 
+    setIsSkippingRound(true);
     socket.emit("real-or-ai:round-skip", { roomCode: room.roomCode }, (response) => {
+      setIsSkippingRound(false);
+
       if (!response.ok) {
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
       setRoundResult(response.data);
+      setCountdown(null);
       setTimer(null);
       setErrorMessage(null);
     });
@@ -753,6 +747,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSkippingRound(false);
       setNoticeMessage("방을 대기 상태로 되돌렸습니다.");
     });
   }
@@ -798,101 +793,375 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       </div>
     </div>
   );
-  const roomHeading = room
-    ? room.status === "waiting"
-      ? "대기실"
-      : room.status === "answering"
-        ? "라운드 진행 중"
-        : roomStatusLabel(room.status)
-    : isJoinOnly
-      ? "닉네임을 입력하고 참가하세요"
-      : "방을 만들거나 코드로 참가하세요";
   const isActiveRoundView = room?.status === "answering";
+  const isLiveGameView = room?.status === "answering" || room?.status === "countdown";
+  const shouldShowRoomIdentity = Boolean(room && !isLiveGameView);
+  const shouldShowNoticeMessage = Boolean(noticeMessage && (!room || room.status === "waiting"));
+  const participantPreview = room && room.status === "waiting" ? (
+    <div className="mt-4 border border-line-gray bg-panel-gray/60 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-arcade text-xs text-electric-cyan">참가자</p>
+        <span className="text-xs font-black text-muted-gray">
+          {connectedPlayerCount}/{room.maxPlayers}
+        </span>
+      </div>
+      <p className="mt-2 text-sm font-bold leading-6 text-muted-gray">
+        현재 접속 {connectedPlayerCount}명 · 내 닉네임{" "}
+        <strong className="text-screen-white">{currentPlayer?.nickname ?? "참가자"}</strong>
+      </p>
+    </div>
+  ) : null;
+  const roomSidebar = room && (room.status === "waiting" || isHost) ? (
+    <aside className="grid content-start gap-3 sm:gap-6">
+      {isHost ? (
+        <section className="grid gap-4 border border-coin-yellow bg-console-black p-4">
+          <h3 className="flex items-center gap-2 text-xl font-black">
+            <Crown aria-hidden="true" className="text-coin-yellow" size={22} />
+            운영 패널
+          </h3>
+
+          {room.status !== "waiting" ? (
+            <div
+              className="grid grid-cols-3 gap-2 text-center"
+              data-testid="real-ai-operation-status"
+            >
+              <div className="arcade-meter min-h-14 px-2 py-2">
+                <strong className="text-base">{operationRoundText}</strong>
+                <span>라운드</span>
+              </div>
+              <div className="arcade-meter min-h-14 px-2 py-2">
+                <strong className="text-base">{operationRemainingSeconds}</strong>
+                <span>남은 초</span>
+              </div>
+              <div className="arcade-meter min-h-14 px-2 py-2">
+                <strong className="text-base">
+                  {operationSubmittedCount}/{operationPlayerCount}
+                </strong>
+                <span>제출</span>
+              </div>
+            </div>
+          ) : null}
+
+          {room.status === "answering" ? (
+            <button
+              className="arcade-button arcade-button-secondary"
+              data-testid="real-ai-skip-round"
+              disabled={!canSkipRound}
+              onClick={skipRound}
+              type="button"
+            >
+              <X aria-hidden="true" size={18} />
+              {isSkippingRound ? "스킵 중" : "라운드 스킵"}
+            </button>
+          ) : null}
+
+          <button
+            className="arcade-button arcade-button-danger"
+            disabled={!isHost}
+            onClick={resetRoom}
+            type="button"
+          >
+            <RotateCcw aria-hidden="true" size={18} />
+            방 리셋
+          </button>
+
+          <div className="grid gap-3 border border-line-gray bg-panel-gray p-3">
+            <button
+              aria-expanded={isQrPanelOpen}
+              className="arcade-button arcade-button-ghost w-full justify-between"
+              disabled={!joinUrl}
+              onClick={() => setIsQrPanelOpen((value) => !value)}
+              type="button"
+            >
+              <span className="inline-flex items-center gap-2">
+                <QrCode aria-hidden="true" size={18} />
+                QR 입장
+              </span>
+              {isQrPanelOpen ? (
+                <ChevronUp aria-hidden="true" size={18} />
+              ) : (
+                <ChevronDown aria-hidden="true" size={18} />
+              )}
+            </button>
+
+            {isQrPanelOpen ? (
+              <div className="grid gap-3 sm:grid-cols-[96px_minmax(0,1fr)] xl:grid-cols-1">
+                <div className="grid h-24 w-24 place-items-center border border-line-gray bg-screen-white p-2">
+                  {qrDataUrl ? (
+                    <div
+                      aria-label={`${room.roomCode} 방 참가 QR`}
+                      className="h-full w-full bg-contain bg-center bg-no-repeat"
+                      style={{ backgroundImage: `url("${qrDataUrl}")` }}
+                    />
+                  ) : (
+                    <span className="text-xs font-black text-console-black">QR</span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-arcade text-xs text-electric-cyan">참가 링크</p>
+                  <p className="mt-2 break-all text-sm font-bold leading-6 text-screen-white">
+                    {joinUrl}
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                    <button
+                      className="arcade-button arcade-button-secondary"
+                      disabled={!joinUrl}
+                      onClick={copyJoinUrl}
+                      type="button"
+                    >
+                      <Clipboard aria-hidden="true" size={16} />
+                      링크 복사
+                    </button>
+                    <button
+                      className="arcade-button arcade-button-ghost"
+                      disabled={!qrDataUrl}
+                      onClick={openQrModal}
+                      ref={qrModalTriggerRef}
+                      type="button"
+                    >
+                      <Maximize2 aria-hidden="true" size={16} />
+                      크게 보기
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {copyNotice ? (
+              <p className="text-sm font-bold text-health-green">{copyNotice}</p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {isHost && room.status === "waiting" ? (
+        <section className="grid gap-4 border border-line-gray bg-console-black p-4">
+          <h3 className="flex items-center gap-2 text-xl font-black">
+            <Settings2 aria-hidden="true" className="text-electric-cyan" size={22} />
+            게임 설정
+          </h3>
+          <div className="space-y-5">
+            <div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="font-black" htmlFor="real-ai-round-count">
+                  라운드 수
+                </label>
+                <span className="text-sm text-muted-gray">최대 {room.playableRoundCount}</span>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  aria-label="라운드 줄이기"
+                  className="arcade-button arcade-button-ghost h-11 w-11 px-0"
+                  disabled={room.settings.roundCount <= 1}
+                  onClick={() => changeRoundCount(-1)}
+                  type="button"
+                >
+                  <Minus aria-hidden="true" size={18} />
+                </button>
+                <div
+                  className="grid h-11 min-w-24 place-items-center border border-line-gray bg-console-black font-arcade text-xl"
+                  id="real-ai-round-count"
+                >
+                  {room.settings.roundCount}
+                </div>
+                <button
+                  aria-label="라운드 늘리기"
+                  className="arcade-button arcade-button-ghost h-11 w-11 px-0"
+                  disabled={room.settings.roundCount >= roundCountMax}
+                  onClick={() => changeRoundCount(1)}
+                  type="button"
+                >
+                  <Plus aria-hidden="true" size={18} />
+                </button>
+              </div>
+            </div>
+
+            <label className="grid gap-2 font-black" htmlFor="real-ai-round-duration-select">
+              제한 시간
+              <select
+                className="arcade-input"
+                id="real-ai-round-duration-select"
+                onChange={(event) =>
+                  updateSettings({
+                    ...room.settings,
+                    roundDurationSeconds:
+                      parseRoundDuration(event.target.value) ??
+                      room.settings.roundDurationSeconds,
+                  })
+                }
+                value={room.settings.roundDurationSeconds}
+              >
+                {REAL_OR_AI_ROUND_DURATION_OPTIONS.map((duration) => (
+                  <option key={duration} value={duration}>
+                    {duration}초
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="grid gap-2 font-black" htmlFor="real-ai-countdown-select">
+              준비 시간
+              <select
+                className="arcade-input"
+                id="real-ai-countdown-select"
+                onChange={(event) =>
+                  updateSettings({
+                    ...room.settings,
+                    countdownSeconds:
+                      parseCountdownSeconds(event.target.value) ??
+                      room.settings.countdownSeconds,
+                  })
+                }
+                value={room.settings.countdownSeconds}
+              >
+                {REAL_OR_AI_COUNTDOWN_SECONDS_OPTIONS.map((seconds) => (
+                  <option key={seconds} value={seconds}>
+                    {seconds}초
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+      ) : room.status === "waiting" ? (
+        <section className="grid gap-4 border border-line-gray bg-console-black p-4">
+          <h3 className="flex items-center gap-2 text-xl font-black">
+            <Settings2 aria-hidden="true" className="text-electric-cyan" size={22} />
+            설정 요약
+          </h3>
+          <p className="text-sm leading-6 text-muted-gray">
+            {isHost
+              ? "진행 중에는 설정을 바꿀 수 없습니다."
+              : "호스트가 시작 전 설정을 조정합니다."}
+          </p>
+          {renderSettingsSummary}
+        </section>
+      ) : null}
+
+      {room.status === "waiting" ? (
+        <section className="grid gap-3 border border-line-gray bg-console-black p-4">
+          <p className="text-sm leading-6 text-muted-gray">
+            {isHost
+              ? `${room.minPlayers}명 이상 모이면 게임을 시작할 수 있습니다.`
+              : "호스트가 게임을 시작합니다."}
+          </p>
+          <button
+            className="arcade-button arcade-button-primary"
+            data-testid="real-ai-start-game"
+            disabled={!canStart}
+            onClick={startGame}
+            type="button"
+          >
+            <Play aria-hidden="true" size={18} />
+            게임 시작
+          </button>
+        </section>
+      ) : null}
+    </aside>
+  ) : null;
 
   return (
-    <main className="min-h-[100svh] bg-console-black text-screen-white">
-      <div className="screen-grid min-h-[100svh] px-3 py-3 sm:px-5 sm:py-8">
+    <main className="min-h-[100svh] bg-console-black pb-[env(safe-area-inset-bottom)] text-screen-white">
+      <div
+        className={`screen-grid min-h-[100svh] ${
+          isLiveGameView ? "px-2 py-2 sm:px-5 sm:py-8" : "px-3 py-3 sm:px-5 sm:py-8"
+        }`}
+      >
         <div className="mx-auto flex min-h-[100svh] w-full max-w-6xl flex-col">
-          <header className="flex flex-wrap items-center justify-between gap-4">
-            <Link className="arcade-button arcade-button-ghost" href="/">
-              <ArrowLeft aria-hidden="true" size={18} />
-              허브로
-            </Link>
-            <div className="arcade-badge arcade-badge-cyan min-h-11 px-4">
+          {!isLiveGameView ? (
+            <header className="flex flex-wrap items-center justify-between gap-4">
+              <Link className="arcade-button arcade-button-ghost" href="/">
+                <ArrowLeft aria-hidden="true" size={18} />
+                허브로
+              </Link>
+              <div className="arcade-badge arcade-badge-cyan min-h-11 px-4">
                 {connectionStatus === "connected" ? (
                   <PlugZap aria-hidden="true" size={16} />
                 ) : (
                   <Plug aria-hidden="true" size={16} />
                 )}
                 <span className="ml-2">{statusText(connectionStatus)}</span>
-            </div>
-          </header>
+              </div>
+            </header>
+          ) : null}
 
           <section
             className={
-              !room && isJoinOnly
-                ? "grid flex-1 justify-center gap-5 py-6 lg:grid-cols-[minmax(0,720px)]"
-                : "grid flex-1 gap-5 py-4 sm:py-6 lg:grid-cols-[minmax(0,1fr)_340px]"
+              room
+                ? "grid flex-1 gap-3 py-3 sm:gap-6 sm:py-8"
+                : isJoinOnly
+                  ? "grid flex-1 justify-center gap-5 py-6 lg:grid-cols-[minmax(0,720px)]"
+                  : "grid flex-1 gap-5 py-4 sm:py-6 lg:grid-cols-[minmax(0,1fr)_340px]"
             }
           >
-            <div className={room ? "arcade-panel p-3 sm:p-5" : "grid content-start gap-5"}>
-              <div className={room ? "flex flex-wrap items-start justify-between gap-3" : "grid gap-3"}>
-                <div>
-                  <p className="font-arcade text-xs text-electric-cyan">
-                    {room ? "Real or AI" : "사진 판별 로비"}
-                  </p>
-                  <h1
-                    className={`mt-2 font-black leading-tight ${
-                      room
-                        ? "text-2xl text-screen-white sm:text-4xl"
-                        : "text-3xl text-coin-yellow sm:text-5xl"
-                    }`}
-                  >
-                    {room ? roomHeading : "Real or AI"}
-                  </h1>
-                  {!room ? (
-                    <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-gray sm:text-lg sm:leading-8">
-                      실제 사진과 AI 생성 사진을 비교해 진짜를 빠르게 고르는 게임입니다.
-                      돋보기로 사진을 꼼꼼히 확인하고 라운드 결과와 최종 랭킹까지 이어집니다.
-                    </p>
-                  ) : room.status === "waiting" ? (
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-gray">
-                      참가자가 모이면 설정을 확인하고 시작하세요.
-                    </p>
-                  ) : null}
-                </div>
-                {room ? (
-                  <div className="flex flex-wrap items-start gap-3">
-                    <div className="min-w-36 border border-line-gray bg-console-black p-3 text-right">
-                      <p className="text-xs font-bold text-muted-gray">방 코드</p>
-                      <p className="mt-1 font-arcade text-xl text-screen-white sm:text-2xl">
-                        {room.roomCode}
-                      </p>
-                      <p className="mt-2 text-xs font-bold text-muted-gray">
-                        내 닉네임{" "}
-                        <strong className="text-screen-white">
-                          {currentPlayer?.nickname ?? "참가자"}
-                        </strong>
+            <div
+              className={
+                room
+                  ? isLiveGameView
+                    ? "grid content-start gap-3"
+                    : "arcade-panel p-5 sm:p-6"
+                  : "grid content-start gap-5"
+              }
+            >
+              {!isLiveGameView ? (
+                <div
+                  className={
+                    room ? "flex flex-wrap items-start justify-between gap-3" : "grid gap-3"
+                  }
+                >
+                  {room ? (
+                    <>
+                      {shouldShowRoomIdentity ? (
+                        <div>
+                          <p className="font-arcade text-xs text-electric-cyan">방 코드</p>
+                          <h1 className="mt-1 font-arcade text-2xl text-coin-yellow sm:mt-2 sm:text-5xl">
+                            {room.roomCode}
+                          </h1>
+                          <p className="mt-1 text-sm text-muted-gray sm:mt-3">
+                            내 닉네임{" "}
+                            <strong className="text-screen-white">
+                              {currentPlayer?.nickname ?? "참가자"}
+                            </strong>
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="min-w-0">
+                          <p className="font-arcade text-xs text-electric-cyan">Real or AI</p>
+                          <h1 className="mt-1 text-2xl font-black leading-tight text-screen-white sm:text-4xl">
+                            {roomStatusLabel(room.status)}
+                          </h1>
+                        </div>
+                      )}
+                      <button
+                        className="arcade-button arcade-button-danger"
+                        onClick={leaveRoom}
+                        type="button"
+                      >
+                        <LogOut aria-hidden="true" size={18} />
+                        나가기
+                      </button>
+                    </>
+                  ) : (
+                    <div>
+                      <p className="font-arcade text-xs text-electric-cyan">사진 판별 로비</p>
+                      <h1 className="mt-2 text-3xl font-black leading-tight text-coin-yellow sm:text-5xl">
+                        Real or AI
+                      </h1>
+                      <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-gray sm:text-lg sm:leading-8">
+                        실제 사진과 AI 생성 사진을 비교해 진짜를 빠르게 고르는 게임입니다.
+                        돋보기로 사진을 꼼꼼히 확인하고 라운드 결과와 최종 랭킹까지 이어집니다.
                       </p>
                     </div>
-                    <button
-                      className="arcade-button arcade-button-ghost"
-                      onClick={leaveRoom}
-                      type="button"
-                    >
-                      <LogOut aria-hidden="true" size={18} />
-                      나가기
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+                  )}
+                </div>
+              ) : null}
 
               {errorMessage ? (
                 <p className="mt-4 border border-joystick-red bg-joystick-red/15 p-3 text-sm font-bold text-screen-white">
                   {errorMessage}
                 </p>
               ) : null}
-              {noticeMessage ? (
+              {shouldShowNoticeMessage ? (
                 <p className="mt-4 border border-health-green bg-health-green/15 p-3 text-sm font-bold text-screen-white">
                   {noticeMessage}
                 </p>
@@ -987,384 +1256,127 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
                   </form>
                 </div>
               ) : (
-                <div className="mt-3" ref={activeRoundViewRef}>
-                  <section className="border border-line-gray bg-console-black p-3 sm:p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="font-arcade text-xs text-electric-cyan">
-                          {isActiveRoundView ? "현재 라운드" : "대기실"}
-                        </p>
-                        <h2 className="mt-1 text-xl font-black text-screen-white sm:text-2xl">
-                          {roomStatusLabel(room.status)}
-                        </h2>
-                      </div>
-                      <div className="arcade-badge">
-                        <Users aria-hidden="true" size={16} />
-                        {connectedPlayerCount}/{room.maxPlayers}
-                      </div>
-                    </div>
+                <div
+                  className={`mt-3 grid gap-3 sm:mt-6 sm:gap-6 ${
+                    roomSidebar
+                      ? "lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px]"
+                      : ""
+                  }`}
+                >
+                  <div data-testid="real-ai-active-round-anchor" ref={activeRoundViewRef}>
+                    <section
+                      className={
+                        room.status === "countdown"
+                          ? "grid min-h-[calc(100svh-1rem)] content-center"
+                          : isActiveRoundView
+                          ? "grid gap-3"
+                          : "border border-line-gray bg-console-black p-3 sm:p-4"
+                      }
+                    >
+                      {!isLiveGameView ? (
+                        <>
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="font-arcade text-xs text-electric-cyan">대기실</p>
+                              <h2 className="mt-1 text-xl font-black text-screen-white sm:text-2xl">
+                                {roomStatusLabel(room.status)}
+                              </h2>
+                            </div>
+                            <div className="arcade-badge">
+                              <Users aria-hidden="true" size={16} />
+                              {connectedPlayerCount}/{room.maxPlayers}
+                            </div>
+                          </div>
 
-                    <p className="mt-2 text-sm leading-6 text-muted-gray">
-                      {roomStatusHelp(room.status)}
-                    </p>
+                          <p className="mt-2 text-sm leading-6 text-muted-gray">
+                            {roomStatusHelp(room.status)}
+                          </p>
 
-                    {!isActiveRoundView ? (
-                      <div className="mt-4">{renderSettingsSummary}</div>
-                    ) : null}
+                          <div className="mt-4">{renderSettingsSummary}</div>
+                        </>
+                      ) : null}
 
-                    {room.status === "countdown" ? (
-                      <div className="mt-5 border border-coin-yellow bg-coin-yellow/15 p-4">
-                        <p className="font-arcade text-xs text-coin-yellow">준비 카운트다운</p>
-                        <p className="mt-2 text-3xl font-black text-screen-white">
-                          {countdown?.remainingSeconds ?? room.settings.countdownSeconds}초
-                        </p>
-                      </div>
-                    ) : null}
+                      {room.status === "countdown" ? (
+                        <div
+                          className="grid gap-3 border border-coin-yellow bg-coin-yellow/15 p-3"
+                          data-testid="real-ai-countdown-panel"
+                        >
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+                            <div className="min-w-0">
+                              <p className="font-arcade text-xs text-coin-yellow">READY</p>
+                              <h2 className="mt-1 text-xl font-black leading-tight text-screen-white">
+                                곧 시작합니다
+                              </h2>
+                            </div>
+                            <div className="grid min-h-12 min-w-20 place-items-center border border-line-gray bg-console-black px-2 text-center">
+                              <strong
+                                className="text-xl font-black leading-none text-screen-white"
+                                data-testid="real-ai-countdown-seconds"
+                              >
+                                {countdown?.remainingSeconds ?? room.settings.countdownSeconds}
+                              </strong>
+                              <span className="mt-1 text-xs font-black text-muted-gray">초</span>
+                            </div>
+                            <button
+                              aria-label="방 나가기"
+                              className="arcade-button arcade-button-ghost h-12 min-h-12 w-12 px-0"
+                              data-testid="real-ai-countdown-leave"
+                              onClick={leaveRoom}
+                              type="button"
+                            >
+                              <LogOut aria-hidden="true" size={18} />
+                            </button>
+                          </div>
+                          <p className="text-sm font-bold leading-6 text-muted-gray">
+                            곧 두 후보가 공개됩니다. 진짜 사진을 고를 준비를 하세요.
+                          </p>
+                        </div>
+                      ) : null}
 
-                    {room.status === "answering" && activeRound ? (
-                      <RealOrAiAnsweringPanel
-                        answerCount={answerCount}
-                        currentPlayerId={currentPlayerId}
-                        isSubmittingAnswer={isSubmittingAnswer}
-                        onCandidateSelect={setSelectedCandidateId}
-                        onSubmitAnswer={submitAnswer}
-                        room={room}
-                        round={activeRound}
-                        selectedCandidateId={selectedCandidateId}
-                        submittedAnswer={submittedAnswer}
-                        timer={timer}
-                      />
-                    ) : null}
+                      {room.status === "answering" && activeRound ? (
+                        <RealOrAiAnsweringPanel
+                          answerCount={answerCount}
+                          currentPlayerId={currentPlayerId}
+                          isSubmittingAnswer={isSubmittingAnswer}
+                          onCandidateSelect={setSelectedCandidateId}
+                          onLeaveRoom={leaveRoom}
+                          onSubmitAnswer={submitAnswer}
+                          room={room}
+                          round={activeRound}
+                          selectedCandidateId={selectedCandidateId}
+                          submittedAnswer={submittedAnswer}
+                          timer={timer}
+                        />
+                      ) : null}
 
-                    {roundResult ? (
-                      <RealOrAiRoundResultPanel
-                        currentPlayerId={currentPlayerId}
-                        isAdvancingRound={isAdvancingRound}
-                        isHost={isHost}
-                        onNextRound={nextRound}
-                        result={roundResult}
-                      />
-                    ) : null}
+                      {roundResult ? (
+                        <RealOrAiRoundResultPanel
+                          currentPlayerId={currentPlayerId}
+                          isAdvancingRound={isAdvancingRound}
+                          isHost={isHost}
+                          onNextRound={nextRound}
+                          result={roundResult}
+                        />
+                      ) : null}
 
-                    {gameResult ? (
-                      <RealOrAiFinalResultPanel
-                        currentPlayerId={currentPlayerId}
-                        gameResult={gameResult}
-                        isHost={isHost}
-                        onResetRoom={resetRoom}
-                      />
-                    ) : null}
-                  </section>
+                      {gameResult ? (
+                        <RealOrAiFinalResultPanel
+                          currentPlayerId={currentPlayerId}
+                          gameResult={gameResult}
+                          isHost={isHost}
+                          onResetRoom={resetRoom}
+                        />
+                      ) : null}
+
+                      {participantPreview}
+                    </section>
+                  </div>
+                  {roomSidebar}
                 </div>
               )}
             </div>
 
-            {room ? (
-              <aside className="grid gap-5">
-                <section className="arcade-panel p-4">
-                  <div className="flex items-center gap-3 text-pixel-blue">
-                    <Users aria-hidden="true" size={22} />
-                    <h2 className="font-black text-screen-white">참가자</h2>
-                  </div>
-                  <div className="mt-4 max-h-56 space-y-2 overflow-y-auto pr-1">
-                    {room.players.map((player) => (
-                      <div
-                        className="flex items-center justify-between gap-3 border border-line-gray bg-console-black px-3 py-2"
-                        key={player.playerId}
-                      >
-                        <span className="truncate font-bold">
-                          {player.nickname}
-                          {player.playerId === currentPlayerId ? " (나)" : ""}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2 text-xs font-black text-muted-gray">
-                          {player.playerId === room.hostPlayerId ? (
-                            <Crown aria-label="호스트" className="text-coin-yellow" size={14} />
-                          ) : null}
-                          {player.connectionStatus === "connected" ? "온라인" : "끊김"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                {isHost ? (
-                <section className="arcade-panel p-4">
-                  <div className="flex items-center gap-3 text-coin-yellow">
-                    <Crown aria-hidden="true" size={22} />
-                    <h2 className="font-black text-screen-white">운영 패널</h2>
-                  </div>
-                  <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                    <div className="arcade-meter min-h-16 px-2 py-2">
-                      <strong>{operationRoundText}</strong>
-                      <span>현재 라운드</span>
-                    </div>
-                    <div className="arcade-meter min-h-16 px-2 py-2">
-                      <strong>{operationRemainingSeconds}</strong>
-                      <span>남은 시간</span>
-                    </div>
-                    <div className="arcade-meter min-h-16 px-2 py-2">
-                      <strong>
-                        {operationSubmittedCount}/{connectedPlayerCount}
-                      </strong>
-                      <span>제출</span>
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3">
-                    <button
-                      className="arcade-button arcade-button-primary"
-                      disabled={!canStart}
-                      onClick={startGame}
-                      type="button"
-                    >
-                      <Play aria-hidden="true" size={18} />
-                      게임 시작
-                    </button>
-                    <button
-                      className="arcade-button arcade-button-danger"
-                      disabled={!canSkipRound}
-                      onClick={skipRound}
-                      type="button"
-                    >
-                      <X aria-hidden="true" size={18} />
-                      라운드 스킵
-                    </button>
-                    <button
-                      aria-label="운영 패널 다음 진행"
-                      className="arcade-button arcade-button-secondary"
-                      disabled={!canAdvanceFromOperations}
-                      onClick={nextRound}
-                      type="button"
-                    >
-                      <Maximize2 aria-hidden="true" size={18} />
-                      다음 진행
-                    </button>
-                    <button
-                      className="arcade-button arcade-button-danger"
-                      disabled={!isHost}
-                      onClick={resetRoom}
-                      type="button"
-                    >
-                      <RotateCcw aria-hidden="true" size={18} />
-                      방 리셋
-                    </button>
-                  </div>
-                  <p className="mt-3 text-xs font-bold leading-5 text-muted-gray">
-                    설정은 대기 중에만 바꿀 수 있고, 진행 중에는 호스트 운영 버튼만 활성화됩니다.
-                  </p>
-                </section>
-                ) : null}
-
-                {isHost && room.status === "waiting" ? (
-                  <section className="arcade-panel p-4">
-                    <div className="flex items-center gap-3 text-coin-yellow">
-                      <Settings2 aria-hidden="true" size={22} />
-                      <h2 className="font-black text-screen-white">게임 설정</h2>
-                    </div>
-                    <div className="mt-5 space-y-5">
-                      <div>
-                        <div className="flex items-center justify-between gap-3">
-                          <label className="font-black" htmlFor="real-ai-round-count">
-                            라운드 수
-                          </label>
-                          <span className="text-sm text-muted-gray">
-                            최대 {room.playableRoundCount}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex items-center gap-2">
-                          <button
-                            aria-label="라운드 줄이기"
-                            className="arcade-button arcade-button-ghost h-11 w-11 px-0"
-                            disabled={room.settings.roundCount <= 1}
-                            onClick={() => changeRoundCount(-1)}
-                            type="button"
-                          >
-                            <Minus aria-hidden="true" size={18} />
-                          </button>
-                          <div
-                            className="grid h-11 min-w-24 place-items-center border border-line-gray bg-console-black font-arcade text-xl"
-                            id="real-ai-round-count"
-                          >
-                            {room.settings.roundCount}
-                          </div>
-                          <button
-                            aria-label="라운드 늘리기"
-                            className="arcade-button arcade-button-ghost h-11 w-11 px-0"
-                            disabled={room.settings.roundCount >= roundCountMax}
-                            onClick={() => changeRoundCount(1)}
-                            type="button"
-                          >
-                            <Plus aria-hidden="true" size={18} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="font-black" id="real-ai-round-duration">
-                          제한 시간
-                        </p>
-                        <div
-                          aria-labelledby="real-ai-round-duration"
-                          className="mt-2 grid gap-3"
-                        >
-                          {roundDurationGroups.map((group) => (
-                            <div
-                              className="border border-line-gray bg-console-black/70 p-3"
-                              key={group.title}
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <strong className="text-sm text-screen-white">
-                                  {group.title}
-                                </strong>
-                                <span className="text-xs font-bold text-muted-gray">
-                                  {group.help}
-                                </span>
-                              </div>
-                              <div className="mt-2 grid grid-cols-3 gap-2">
-                                {group.durations.map((duration) => (
-                                  <button
-                                    aria-pressed={
-                                      room.settings.roundDurationSeconds === duration
-                                    }
-                                    className={
-                                      room.settings.roundDurationSeconds === duration
-                                        ? "arcade-button"
-                                        : "arcade-button arcade-button-ghost"
-                                    }
-                                    key={duration}
-                                    onClick={() =>
-                                      updateSettings({
-                                        ...room.settings,
-                                        roundDurationSeconds:
-                                          parseRoundDuration(String(duration)) ??
-                                          room.settings.roundDurationSeconds,
-                                      })
-                                    }
-                                    type="button"
-                                  >
-                                    <Timer aria-hidden="true" size={16} />
-                                    {duration}초
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="font-black" htmlFor="real-ai-countdown">
-                          준비 시간
-                        </label>
-                        <div className="mt-2 grid grid-cols-3 gap-2" id="real-ai-countdown">
-                          {REAL_OR_AI_COUNTDOWN_SECONDS_OPTIONS.map((seconds) => (
-                            <button
-                              aria-pressed={room.settings.countdownSeconds === seconds}
-                              className={
-                                room.settings.countdownSeconds === seconds
-                                  ? "arcade-button"
-                                  : "arcade-button arcade-button-ghost"
-                              }
-                              key={seconds}
-                              onClick={() =>
-                                updateSettings({
-                                  ...room.settings,
-                                  countdownSeconds:
-                                    parseCountdownSeconds(String(seconds)) ??
-                                    room.settings.countdownSeconds,
-                                })
-                              }
-                              type="button"
-                            >
-                              {seconds}초
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-                ) : (
-                  <section className="arcade-panel p-4">
-                    <div className="flex items-center gap-3 text-electric-cyan">
-                      <Settings2 aria-hidden="true" size={22} />
-                      <h2 className="font-black text-screen-white">설정 요약</h2>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-muted-gray">
-                      {isHost
-                        ? "진행 중에는 설정을 바꿀 수 없습니다."
-                        : "호스트가 시작 전 설정을 조정합니다."}
-                    </p>
-                    <div className="mt-4">{renderSettingsSummary}</div>
-                  </section>
-                )}
-
-                {isHost ? (
-                  <section className="arcade-panel p-4">
-                    <button
-                      aria-expanded={isQrPanelOpen}
-                      className="flex w-full items-center justify-between gap-3 text-left"
-                      onClick={() => setIsQrPanelOpen((value) => !value)}
-                      type="button"
-                    >
-                      <span className="flex items-center gap-3 font-black text-screen-white">
-                        <QrCode aria-hidden="true" className="text-coin-yellow" size={22} />
-                        QR 입장
-                      </span>
-                      {isQrPanelOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                    </button>
-
-                    {isQrPanelOpen ? (
-                      <div className="mt-4 border border-line-gray bg-console-black p-4">
-                        <p className="text-sm font-bold text-muted-gray">참가 링크</p>
-                        <p className="mt-2 break-all text-sm font-bold text-screen-white">
-                          {joinUrl}
-                        </p>
-                        <div className="mt-4 grid grid-cols-[96px_minmax(0,1fr)] gap-3">
-                          <div className="grid aspect-square place-items-center border border-line-gray bg-screen-white p-2">
-                            {qrDataUrl ? (
-                              <div
-                                aria-label={`${room.roomCode} 방 참가 QR`}
-                                className="h-full w-full bg-contain bg-center bg-no-repeat"
-                                style={{ backgroundImage: `url("${qrDataUrl}")` }}
-                              />
-                            ) : (
-                              <span className="text-xs font-black text-console-black">
-                                QR
-                              </span>
-                            )}
-                          </div>
-                          <div className="grid content-center gap-2">
-                            <button
-                              className="arcade-button arcade-button-secondary"
-                              disabled={!joinUrl}
-                              onClick={copyJoinUrl}
-                              type="button"
-                            >
-                              <Clipboard aria-hidden="true" size={16} />
-                              링크 복사
-                            </button>
-                            <button
-                              className="arcade-button arcade-button-ghost"
-                              disabled={!qrDataUrl}
-                              onClick={openQrModal}
-                              ref={qrModalTriggerRef}
-                              type="button"
-                            >
-                              <Maximize2 aria-hidden="true" size={16} />
-                              크게 보기
-                            </button>
-                          </div>
-                        </div>
-                        {copyNotice ? (
-                          <p className="mt-3 text-sm font-bold text-health-green">
-                            {copyNotice}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </section>
-                ) : null}
-              </aside>
-            ) : !isJoinOnly ? (
+            {!room && !isJoinOnly ? (
               <aside className="arcade-panel p-4">
                 <div className="flex items-center gap-3 text-coin-yellow">
                   <Trophy aria-hidden="true" size={22} />

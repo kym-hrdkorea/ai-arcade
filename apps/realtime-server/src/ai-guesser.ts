@@ -27,6 +27,7 @@ export type AIGuesserInput = {
 
 export type AIGuesserScoringContext = {
   aliases: string[];
+  category?: string;
   candidateWords: string[];
   correctWord: string;
 };

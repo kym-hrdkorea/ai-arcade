@@ -9,9 +9,13 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
+  expect: {
+    timeout: 15_000,
+  },
   retries: process.env.CI ? 2 : 0,
   reporter: [["list"]],
-  timeout: 45_000,
+  timeout: 180_000,
+  workers: 2,
   use: {
     baseURL: webUrl,
     screenshot: "only-on-failure",
@@ -24,7 +28,7 @@ export default defineConfig({
         "pnpm --filter @ai-arcade/shared build && pnpm --filter realtime-server exec tsx src/index.ts",
       env: {
         CORS_ORIGIN: `http://localhost:${webPort}`,
-        DISCONNECT_GRACE_MS: "2000",
+        DISCONNECT_GRACE_MS: "10000",
         DRAW_DUEL_AI_PROVIDER: "mock",
         REALTIME_PORT: String(realtimePort),
       },

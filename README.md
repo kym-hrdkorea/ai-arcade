@@ -6,7 +6,7 @@ AI Arcade는 여러 명이 동시에 접속해 즐기는 웹 기반 AI 레크리
 
 ## 현재 상태
 
-Phase 6.5 Draw Duel 파일럿 안정화 및 E2E 검증 단계입니다.
+Phase 7 공개 베타 플레이어 벤치마크 안정화 단계입니다.
 
 - `apps/web`: Next.js App Router 기반 레트로 게임 허브
 - `apps/realtime-server`: Socket.IO 기반 방 생성·참가 서버
@@ -19,7 +19,7 @@ Phase 6.5 Draw Duel 파일럿 안정화 및 E2E 검증 단계입니다.
 - Draw Duel Mock AI: 서버 내부 `AIGuesser` 경계, 라운드당 1회 Mock AI 추측, AI 점수판/최종 결과 표시
 - Draw Duel 운영 안정화: QR 입장, 호스트 전용 라운드 스킵/방 리셋, 같은 브라우저 재접속 복구, 끊김 상태 표시
 - Draw Duel 파일럿 준비: 호스트 전용 QR 운영 패널, 시작 전 게임 설정, Playwright E2E 시나리오
-- 부하 스모크: realtime-server 대상 100 clients/10 rooms 가정 Socket.IO 시나리오 스크립트
+- 부하 스모크: Draw Duel 100 clients/10 rooms, Real or AI 100 clients/1 room Socket.IO 시나리오 스크립트
 
 ## 실행 방법
 
@@ -64,14 +64,23 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm e2e
+pnpm e2e:serial
 ```
 
-부하 스모크는 realtime-server가 실행 중일 때 별도로 실행합니다.
+공개 베타 플레이어 벤치마크 기준과 점수표는 `docs/PUBLIC_BETA_BENCHMARK.md`를 따른다.
+전체 공개 베타 게이트는 아래 명령으로 실행한다.
 
 ```bash
-pnpm --filter realtime-server load:smoke
-LOAD_SMOKE_CLIENTS=20 LOAD_SMOKE_ROOMS=4 pnpm --filter realtime-server load:smoke
-LOAD_SMOKE_CLIENTS=50 LOAD_SMOKE_ROOMS=5 pnpm --filter realtime-server load:smoke
+pnpm benchmark:public-beta
+```
+
+부하 스모크는 realtime-server가 실행 중일 때 별도로 실행합니다. 전체 공개 베타 스모크는 Draw Duel과 Real or AI를 연속으로 확인합니다.
+
+```bash
+pnpm benchmark:load-smoke
+pnpm benchmark:load-smoke:all
+pnpm benchmark:load-smoke:draw-duel
+pnpm benchmark:load-smoke:real-or-ai
 ```
 
 이 결과는 100명 운영 보장이 아니라 로컬/행사 환경 점검용 스모크 결과로만 기록합니다.
@@ -87,8 +96,8 @@ LOAD_SMOKE_CLIENTS=50 LOAD_SMOKE_ROOMS=5 pnpm --filter realtime-server load:smok
 
 ## 다음 단계
 
-1. `pnpm e2e`를 기본 회귀 검증에 포함
-2. 내부 20명 테스트와 실제 행사 네트워크 30~50명 파일럿 기록
-3. Phase 7에서 Draw Duel의 Mock AI를 실제 이미지 기반 AI 추측으로 전환
+1. 실제 행사 네트워크 30~50명 리허설 기록
+2. 배포 환경에서 `pnpm benchmark:load-smoke:all`에 준하는 Socket.IO 스모크 재확인
+3. Draw Duel의 Mock AI를 실제 이미지 기반 AI 추측으로 전환하는 별도 리허설
 4. 새 게임 후보는 사용자 아이디어 확정 후 별도 Phase로 정리
 5. Redis adapter, DB 저장, 관리자 대시보드는 별도 Phase에서 검토

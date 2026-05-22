@@ -6,27 +6,35 @@ import type {
 import { normalizeAIGuesserText } from "./ai-guesser.js";
 import { drawDuelWordBank } from "./draw-duel-word-bank.js";
 
+const unknownFallbackText = "모르겠음";
+
 const genericGuessTexts = new Set([
   "animal",
+  "beverage",
   "building",
   "drawing",
   "food",
+  "fruit",
   "object",
   "place",
   "shape",
   "sketch",
   "sport",
   "thing",
+  "tool",
   "vehicle",
+  "건물",
+  "과일",
   "그림",
-  "낙서",
   "동물",
   "물건",
   "사물",
   "스포츠",
   "음식",
+  "음료",
   "장소",
-  "차량",
+  "탈것",
+  "형태",
 ]);
 
 const unknownGuessTexts = new Set([
@@ -36,56 +44,74 @@ const unknownGuessTexts = new Set([
   "모름",
   "몰라",
   "알수없음",
+  "알 수 없음",
 ]);
 
 const fallbackCommentarySteps = [
-  "이 그림의 큰 실루엣을 먼저 살펴보고 있어요.",
-  "몇 가지 단서를 좁혀 보고 있습니다.",
+  "그림의 전체 윤곽을 먼저 살펴보고 있어요.",
+  "몇 가지 시각 단서를 조합해 보고 있습니다.",
 ];
 
 const synonymAliasMap = new Map<string, string>([
+  ["aeroplane", "airplane"],
+  ["aircraft", "airplane"],
   ["auto", "car"],
   ["automobile", "car"],
   ["bikecycle", "bicycle"],
+  ["biking", "bicycle"],
+  ["canine", "dog"],
+  ["cellphone", "phone"],
+  ["couch", "sofa"],
   ["cycle", "bicycle"],
+  ["feline", "cat"],
+  ["football ball", "soccer ball"],
+  ["gift", "present"],
   ["kitty", "cat"],
   ["kitten", "cat"],
-  ["puppy dog", "dog"],
-  ["puppy", "dog"],
-  ["aircraft", "airplane"],
-  ["aeroplane", "airplane"],
-  ["ship", "boat"],
-  ["vessel", "boat"],
-  ["cellphone", "phone"],
+  ["lollipop", "candy"],
+  ["mic", "microphone"],
   ["mobile", "phone"],
   ["mobile phone", "phone"],
+  ["motorbike", "motorcycle"],
+  ["plane", "airplane"],
+  ["puppy", "dog"],
+  ["puppy dog", "dog"],
+  ["school building", "school"],
+  ["ship", "boat"],
   ["smartphone", "phone"],
-  ["tv", "television"],
-  ["sofa chair", "sofa"],
-  ["couch", "sofa"],
-  ["football ball", "soccer ball"],
   ["soccer", "soccer ball"],
-  ["mic", "microphone"],
+  ["sofa chair", "sofa"],
+  ["tv", "television"],
+  ["vessel", "boat"],
 ]);
 
 const koreanParticleSuffixes = [
   "입니다",
   "이에요",
   "예요",
-  "에게",
-  "에서",
-  "으로",
   "처럼",
   "보다",
   "까지",
   "부터",
+  "에서",
+  "으로",
+  "라고",
+  "이고",
+  "이다",
+  "같음",
+  "같아",
+  "같다",
+  "같은",
+  "같아요",
+  "같습니다",
   "은",
   "는",
   "이",
   "가",
   "을",
   "를",
-  "도",
+  "에",
+  "의",
   "와",
   "과",
   "로",
@@ -139,6 +165,9 @@ function createWordAliasIndex(): Map<string, string> {
 }
 
 const wordAliasIndex = createWordAliasIndex();
+const wordBankEntriesByWord = new Map(
+  drawDuelWordBank.map((entry) => [entry.word, entry] as const),
+);
 
 function isGenericGuess(text: string): boolean {
   const compact = normalizeComparableText(text);
@@ -154,7 +183,27 @@ function isUnknownGuess(text: string): boolean {
   return unknownGuessTexts.has(compact) || unknownGuessTexts.has(spaced);
 }
 
-function canonicalizeKnownWord(text: string): string | undefined {
+function allowedWordSet(scoringContext: AIGuesserScoringContext): Set<string> {
+  return new Set(
+    scoringContext.candidateWords.map((candidateWord) =>
+      normalizeComparableText(candidateWord),
+    ),
+  );
+}
+
+function isAllowedCandidateWord(
+  word: string,
+  scoringContext: AIGuesserScoringContext,
+): boolean {
+  const allowedWords = allowedWordSet(scoringContext);
+
+  return allowedWords.size === 0 || allowedWords.has(normalizeComparableText(word));
+}
+
+function canonicalizeKnownWord(
+  text: string,
+  scoringContext: AIGuesserScoringContext,
+): string | undefined {
   for (const key of comparableTextKeys(text)) {
     const synonym = synonymAliasMap.get(key);
     const canonicalWord =
@@ -162,12 +211,52 @@ function canonicalizeKnownWord(text: string): string | undefined {
       (synonym ? wordAliasIndex.get(normalizeComparableText(synonym)) : undefined) ??
       (synonym ? wordAliasIndex.get(normalizeAliasKey(synonym)) : undefined);
 
-    if (canonicalWord) {
+    if (canonicalWord && isAllowedCandidateWord(canonicalWord, scoringContext)) {
       return canonicalWord;
     }
   }
 
   return undefined;
+}
+
+function containedKnownWord(
+  text: string,
+  scoringContext: AIGuesserScoringContext,
+): string | undefined {
+  const compactText = normalizeComparableText(text);
+  const spacedText = normalizeAliasKey(text);
+  const matches: { length: number; word: string }[] = [];
+
+  for (const word of scoringContext.candidateWords) {
+    const entry = wordBankEntriesByWord.get(word);
+
+    if (!entry) {
+      continue;
+    }
+
+    for (const value of [entry.word, ...entry.aliases]) {
+      for (const key of comparableTextKeys(value)) {
+        const compactKey = normalizeComparableText(key);
+        const spacedKey = normalizeAliasKey(key);
+
+        if (compactKey.length < 2 && spacedKey.length < 2) {
+          continue;
+        }
+
+        if (
+          (compactKey.length >= 2 && compactText.includes(compactKey)) ||
+          (spacedKey.length >= 2 && spacedText.includes(spacedKey))
+        ) {
+          matches.push({
+            length: Math.max(compactKey.length, spacedKey.length),
+            word: entry.word,
+          });
+        }
+      }
+    }
+  }
+
+  return matches.sort((first, second) => second.length - first.length)[0]?.word;
 }
 
 function canonicalizeAcceptedAnswer(
@@ -180,8 +269,8 @@ function canonicalizeAcceptedAnswer(
   ].filter(Boolean);
   const normalizedTextKeys = comparableTextKeys(text);
 
-  return acceptedAnswers.some(
-    (answer) => normalizedTextKeys.includes(normalizeComparableText(answer)),
+  return acceptedAnswers.some((answer) =>
+    normalizedTextKeys.includes(normalizeComparableText(answer)),
   )
     ? scoringContext.correctWord
     : undefined;
@@ -190,11 +279,19 @@ function canonicalizeAcceptedAnswer(
 function canonicalizeCandidateText(
   text: string,
   scoringContext: AIGuesserScoringContext,
-): string {
+): string | undefined {
+  if (isUnknownGuess(text)) {
+    return unknownFallbackText;
+  }
+
+  if (isGenericGuess(text)) {
+    return undefined;
+  }
+
   return (
     canonicalizeAcceptedAnswer(text, scoringContext) ??
-    canonicalizeKnownWord(text) ??
-    normalizeAIGuesserText(text)
+    canonicalizeKnownWord(text, scoringContext) ??
+    containedKnownWord(text, scoringContext)
   );
 }
 
@@ -229,6 +326,22 @@ function createCandidateList(output: AIGuesserOutput): AIGuesserCandidate[] {
   return candidates
     .map(normalizeCandidate)
     .filter((candidate): candidate is AIGuesserCandidate => Boolean(candidate));
+}
+
+function canonicalizeCandidate(
+  candidate: AIGuesserCandidate,
+  scoringContext: AIGuesserScoringContext,
+): AIGuesserCandidate | undefined {
+  const canonicalText = canonicalizeCandidateText(candidate.text, scoringContext);
+
+  if (!canonicalText) {
+    return undefined;
+  }
+
+  return {
+    ...candidate,
+    text: canonicalText,
+  };
 }
 
 function dedupeCandidates(candidates: AIGuesserCandidate[]): AIGuesserCandidate[] {
@@ -312,34 +425,35 @@ export function postProcessAIGuesserOutput(
   output: AIGuesserOutput,
   scoringContext: AIGuesserScoringContext,
 ): AIGuesserOutput {
-  const candidates = createCandidateList(output);
-  const firstCandidate = candidates[0];
-  const firstSpecificCandidate = candidates.find(
-    (candidate) => !isGenericGuess(candidate.text) && !isUnknownGuess(candidate.text),
+  const canonicalCandidates = dedupeCandidates(
+    createCandidateList(output)
+      .map((candidate) => canonicalizeCandidate(candidate, scoringContext))
+      .filter((candidate): candidate is AIGuesserCandidate => Boolean(candidate)),
+  );
+  const acceptedCandidate = canonicalCandidates.find((candidate) =>
+    Boolean(canonicalizeAcceptedAnswer(candidate.text, scoringContext)),
   );
   const selectedCandidate =
-    firstCandidate &&
-    (isGenericGuess(firstCandidate.text) || isUnknownGuess(firstCandidate.text)) &&
-    firstSpecificCandidate
-      ? firstSpecificCandidate
-      : firstCandidate;
-
-  const canonicalCandidates = dedupeCandidates(
-    candidates.map((candidate) => ({
-      ...candidate,
-      text: canonicalizeCandidateText(candidate.text, scoringContext),
-    })),
-  );
-  const canonicalSelectedText = selectedCandidate
-    ? canonicalizeCandidateText(selectedCandidate.text, scoringContext)
-    : normalizeAIGuesserText(output.text);
+    acceptedCandidate ??
+    canonicalCandidates.find((candidate) => !isUnknownGuess(candidate.text)) ??
+    canonicalCandidates[0];
+  const canonicalSelectedText = selectedCandidate?.text ?? unknownFallbackText;
+  const resultCandidates =
+    canonicalCandidates.length > 0
+      ? canonicalCandidates
+      : [
+          {
+            confidence: output.confidence,
+            text: unknownFallbackText,
+          },
+        ];
   const commentarySteps = sanitizeAICommentarySteps(output.commentarySteps, [
     canonicalSelectedText,
-    ...canonicalCandidates.map((candidate) => candidate.text),
+    ...resultCandidates.map((candidate) => candidate.text),
   ]);
 
   return {
-    candidates: canonicalCandidates,
+    candidates: resultCandidates,
     commentarySteps,
     confidence: selectedCandidate?.confidence ?? output.confidence,
     text: canonicalSelectedText,

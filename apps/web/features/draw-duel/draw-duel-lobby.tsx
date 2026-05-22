@@ -43,7 +43,6 @@ import {
   PlugZap,
   QrCode,
   RotateCcw,
-  Send,
   Settings2,
   SkipForward,
   Target,
@@ -57,12 +56,14 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
+import { DrawDuelAnswerPanel } from "./draw-duel-answer-panel";
 import { DrawDuelBoard } from "./draw-duel-board";
 import {
   getFinalTeamScores,
   getFinalWinner,
   getHumanAnswerRankings,
 } from "./draw-duel-final-result";
+import { DrawDuelRoundResult } from "./draw-duel-round-result";
 
 type LobbyConnectionStatus =
   | "connecting"
@@ -77,8 +78,11 @@ type StoredRoomSession = {
   roomCode: string;
 };
 
+type PendingDangerAction = "leave" | "reset" | null;
+
 type DrawDuelLobbyProps = {
-  entryMode?: "full" | "join-only";
+  entryMode?: "full" | "host-only" | "join-only";
+  initialRoomCode?: string;
 };
 
 const realtimeUrl = process.env.NEXT_PUBLIC_REALTIME_URL ?? "http://localhost:4000";
@@ -108,34 +112,6 @@ function statusText(status: LobbyConnectionStatus) {
   return "연결 끊김";
 }
 
-function reasonText(reason: DrawDuelRoundResultPayload["reason"]) {
-  if (reason === "all-correct") {
-    return "모든 정답자가 맞혔습니다.";
-  }
-
-  if (reason === "all-submitted") {
-    return "모든 참가자가 답변을 제출했습니다.";
-  }
-
-  if (reason === "drawer-left") {
-    return "출제자가 나가 라운드가 종료됐습니다.";
-  }
-
-  if (reason === "not-enough-players") {
-    return "참가자가 부족해 게임이 종료됐습니다.";
-  }
-
-  if (reason === "operator-skip") {
-    return "호스트가 라운드를 스킵했습니다.";
-  }
-
-  return "시간이 끝났습니다.";
-}
-
-function formatConfidence(confidence: number) {
-  return `${Math.round(confidence * 100)}%`;
-}
-
 function drawerModeText(mode: DrawDuelSettings["drawerMode"]) {
   return mode === "host-only" ? "호스트 고정" : "순서대로 교대";
 }
@@ -144,18 +120,18 @@ function roundDurationText(duration: DrawDuelRoundDurationSeconds) {
   return `${duration}초`;
 }
 
+function screenJoinCodeVisibilityText(
+  visibility: DrawDuelSettings["screenJoinCodeVisibility"],
+) {
+  return visibility === "always" ? "라운드 중 표시" : "대기 중만 표시";
+}
+
 function parseRoundDuration(value: string): DrawDuelRoundDurationSeconds | null {
   const parsed = Number(value);
   const candidate = parsed as DrawDuelRoundDurationSeconds;
 
   return DRAW_DUEL_ROUND_DURATION_OPTIONS.includes(candidate) ? candidate : null;
 }
-
-const resultSlideOrder: DrawDuelResultSlide[] = [
-  "ai-answer",
-  "showdown",
-  "human-answers",
-];
 
 function loadStoredSession(): StoredRoomSession | null {
   if (typeof window === "undefined") {
@@ -206,25 +182,36 @@ function friendlyErrorMessage(error: { code: string; message: string }) {
     ROOM_NOT_FOUND: "방을 찾을 수 없어요.",
     ROOM_FULL: "방이 가득 찼어요.",
     ROOM_NOT_WAITING: "이미 진행 중인 방이에요.",
+    INVALID_ROOM_CODE: "방 코드는 영문과 숫자 6자리로 입력해 주세요.",
+    INVALID_ROOM_JOIN: "방 코드와 닉네임을 확인해 주세요.",
     REJOIN_FAILED: "재접속에 실패했어요. 방 코드로 다시 입장해 주세요.",
     INVALID_ROOM_REJOIN: "재접속 정보가 맞지 않아요.",
     HOST_ONLY: "호스트만 사용할 수 있어요.",
     INVALID_SETTINGS: "설정 값을 확인해 주세요.",
+    NICKNAME_EXHAUSTED: "같은 닉네임이 너무 많아요. 다른 이름을 입력해 주세요.",
     NOT_ENOUGH_PLAYERS: "2명 이상 모이면 시작할 수 있어요.",
     PLAYER_NOT_IN_ROOM: "방 입장 상태를 다시 확인해 주세요.",
     ROUND_NOT_DRAWING: "지금은 스킵할 수 있는 라운드가 없어요.",
     GAME_NOT_STARTED: "아직 시작된 게임이 없어요.",
+    ALREADY_SUBMITTED: "이번 라운드에는 이미 제출했어요.",
   };
 
   return messages[error.code] ?? error.message;
 }
 
-export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
+export function DrawDuelLobby({
+  entryMode = "full",
+  initialRoomCode: initialRoomCodeProp = "",
+}: DrawDuelLobbyProps) {
   const searchParams = useSearchParams();
-  const initialRoomCode = normalizeRoomCode(searchParams.get("roomCode") ?? "");
+  const initialRoomCode = normalizeRoomCode(
+    initialRoomCodeProp || searchParams.get("roomCode") || "",
+  );
   const isJoinOnly = entryMode === "join-only";
+  const isHostOnly = entryMode === "host-only";
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const currentPlayerIdRef = useRef<string | null>(null);
+  const pendingNicknameRef = useRef<string | null>(null);
   const roundIdRef = useRef<string | null>(null);
   const qrModalCloseButtonRef = useRef<HTMLButtonElement>(null);
   const qrModalTriggerRef = useRef<HTMLButtonElement>(null);
@@ -250,10 +237,16 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   const [gameResult, setGameResult] = useState<DrawDuelGameResultPayload | null>(null);
   const [strokeHistory, setStrokeHistory] = useState<DrawStrokeHistoryPayload | null>(null);
   const [joinUrl, setJoinUrl] = useState("");
+  const [playUrl, setPlayUrl] = useState("");
+  const [screenUrl, setScreenUrl] = useState("");
+  const [adminUrl, setAdminUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const [isQrPanelOpen, setIsQrPanelOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
+  const [pendingDangerAction, setPendingDangerAction] =
+    useState<PendingDangerAction>(null);
 
   const openQrModal = useCallback(() => {
     previousQrFocusRef.current =
@@ -300,11 +293,17 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   useEffect(() => {
     if (!room || typeof window === "undefined") {
       setJoinUrl("");
+      setPlayUrl("");
+      setScreenUrl("");
+      setAdminUrl("");
       setQrDataUrl(null);
       return;
     }
 
-    setJoinUrl(`${window.location.origin}/games/draw-duel/join?roomCode=${room.roomCode}`);
+    setJoinUrl(`${window.location.origin}/join/${room.roomCode}`);
+    setPlayUrl(`${window.location.origin}/play/${room.roomCode}`);
+    setScreenUrl(`${window.location.origin}/screen/${room.roomCode}`);
+    setAdminUrl(`${window.location.origin}/admin/${room.roomCode}`);
   }, [room]);
 
   useEffect(() => {
@@ -348,6 +347,12 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
       const storedSession = loadStoredSession();
 
       if (!storedSession) {
+        setConnectionStatus("connected");
+        setErrorMessage(null);
+        return;
+      }
+
+      if (initialRoomCode && storedSession.roomCode !== initialRoomCode) {
         setConnectionStatus("connected");
         setErrorMessage(null);
         return;
@@ -514,9 +519,6 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   const hasJoinRoomCode = joinRoomCode.length === 6;
   const isAIGuessing = currentRound?.status === "ai-guessing" && !roundResult;
   const visibleAIThinkingSteps = aiThinkingSteps.slice(-3);
-  const resultHumanGuesses =
-    roundResult?.guesses.filter((guess) => guess.source === "player") ?? [];
-  const resultAIGuess = roundResult?.guesses.find((guess) => guess.source === "ai") ?? null;
   const initialBoardStrokes: DrawStrokePayload[] = useMemo(
     () => {
       if (!strokeHistory || strokeHistory.roomCode !== room?.roomCode) {
@@ -534,17 +536,23 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
   const connectedPlayerCount =
     room?.players.filter((player) => player.connectionStatus === "connected").length ?? 0;
   const isHost = room?.hostPlayerId === currentPlayerId;
-  const isDrawer = currentRound?.drawerPlayerId === currentPlayerId;
-  const hasSubmittedGuess = Boolean(
-    currentRound &&
-      currentPlayerId &&
-      guessLogs.some(
-        (guess) =>
-          guess.roundId === currentRound.roundId &&
-          guess.playerId === currentPlayerId &&
-          guess.source === "player",
-      ),
+  const isMobileCompactRoomView = Boolean(
+    isPlayingView || (room?.status === "waiting" && !isHost),
   );
+  const isDrawer = currentRound?.drawerPlayerId === currentPlayerId;
+  const submittedGuess = useMemo(
+    () =>
+      currentRound && currentPlayerId
+        ? (guessLogs.find(
+            (guess) =>
+              guess.roundId === currentRound.roundId &&
+              guess.playerId === currentPlayerId &&
+              guess.source === "player",
+          ) ?? null)
+        : null,
+    [currentPlayerId, currentRound, guessLogs],
+  );
+  const hasSubmittedGuess = Boolean(submittedGuess);
   const canStart = Boolean(isHost && room?.status === "waiting" && connectedPlayerCount >= room.minPlayers);
   const canGuess = Boolean(
     room?.status === "playing" &&
@@ -588,7 +596,11 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
     }
   }, [isHost]);
 
-  function applyJoined(payload: RoomJoinedPayload) {
+  useEffect(() => {
+    setIsPlayerMenuOpen(false);
+  }, [room?.status, currentRound?.roundId]);
+
+  function applyJoined(payload: RoomJoinedPayload, requestedNickname?: string) {
     saveStoredSession({
       roomCode: payload.room.roomCode,
       playerId: payload.currentPlayerId,
@@ -596,21 +608,39 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
     });
     setRoom(payload.room);
     setCurrentPlayerId(payload.currentPlayerId);
-    setNoticeMessage(null);
+    const joinedPlayer = payload.room.players.find(
+      (player) => player.playerId === payload.currentPlayerId,
+    );
+    const trimmedNickname = requestedNickname?.trim();
+    const wasRenamed =
+      Boolean(trimmedNickname) &&
+      Boolean(joinedPlayer?.nickname) &&
+      joinedPlayer?.nickname !== trimmedNickname;
+
+    setNoticeMessage(
+      wasRenamed && joinedPlayer
+        ? `같은 닉네임이 있어 ${joinedPlayer.nickname}으로 표시됩니다.`
+        : null,
+    );
     setErrorMessage(null);
     setCopyNotice(null);
     setIsQrPanelOpen(false);
     setIsQrModalOpen(false);
+    setIsPlayerMenuOpen(false);
+    setPendingDangerAction(null);
     resetGameState();
   }
 
-  function handleJoined(response: EventResponse<RoomJoinedPayload>) {
+  function handleJoined(
+    response: EventResponse<RoomJoinedPayload>,
+    requestedNickname?: string,
+  ) {
     if (!response.ok) {
       setErrorMessage(friendlyErrorMessage(response.error));
       return;
     }
 
-    applyJoined(response.data);
+    applyJoined(response.data, requestedNickname);
   }
 
   function submitCreateRoom(event: FormEvent<HTMLFormElement>) {
@@ -622,13 +652,14 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
       return;
     }
 
+    pendingNicknameRef.current = createNickname.trim();
     socket.emit(
       "room:create",
       {
         gameId: DRAW_DUEL_GAME_ID,
         nickname: createNickname,
       },
-      handleJoined,
+      (response) => handleJoined(response, pendingNicknameRef.current ?? undefined),
     );
   }
 
@@ -641,13 +672,14 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
       return;
     }
 
+    pendingNicknameRef.current = joinNickname.trim();
     socket.emit(
       "room:join",
       {
         roomCode: joinRoomCode,
         nickname: joinNickname,
       },
-      handleJoined,
+      (response) => handleJoined(response, pendingNicknameRef.current ?? undefined),
     );
   }
 
@@ -661,6 +693,8 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
       setCopyNotice(null);
       setIsQrPanelOpen(false);
       setIsQrModalOpen(false);
+      setIsPlayerMenuOpen(false);
+      setPendingDangerAction(null);
       resetGameState();
       return;
     }
@@ -679,6 +713,8 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
       setCopyNotice(null);
       setIsQrPanelOpen(false);
       setIsQrModalOpen(false);
+      setIsPlayerMenuOpen(false);
+      setPendingDangerAction(null);
       resetGameState();
     });
   }
@@ -837,7 +873,19 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
 
       setNoticeMessage("방을 대기 상태로 리셋했습니다.");
       setErrorMessage(null);
+      setPendingDangerAction(null);
     });
+  }
+
+  function confirmDangerAction() {
+    if (pendingDangerAction === "leave") {
+      leaveRoom();
+      return;
+    }
+
+    if (pendingDangerAction === "reset") {
+      resetRoom();
+    }
   }
 
   async function copyJoinUrl() {
@@ -889,190 +937,15 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
       return null;
     }
 
-    const teamResult = roundResult.teamResult;
-    const slideIndex = resultSlideOrder.indexOf(resultSlide);
-    const safeSlideIndex = slideIndex === -1 ? 0 : slideIndex;
-    const previousSlide = resultSlideOrder[safeSlideIndex - 1];
-    const nextSlide = resultSlideOrder[safeSlideIndex + 1];
-    const humanRate = `${Math.round(teamResult.humanCorrectRate * 100)}%`;
-    const winnerClass =
-      teamResult.winner === "AI WIN"
-        ? "text-pixel-blue"
-        : teamResult.winner === "HUMAN WIN"
-          ? "text-health-green"
-          : "text-coin-yellow";
-
     return (
-      <div className="grid min-h-[560px] gap-5 border-2 border-coin-yellow bg-console-black p-5 sm:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="font-arcade text-xs text-electric-cyan">
-              Round {roundResult.roundNumber}/{roundResult.totalRounds}
-            </p>
-            <h3 className="mt-2 text-2xl font-black text-screen-white sm:text-3xl">
-              {reasonText(roundResult.reason)}
-            </h3>
-          </div>
-          <span className="arcade-badge arcade-badge-yellow">
-            {safeSlideIndex + 1}/3
-          </span>
-        </div>
-
-        {resultSlide === "ai-answer" ? (
-          <div className="grid flex-1 place-items-center gap-5 text-center">
-            <Bot aria-hidden="true" className="text-electric-cyan" size={64} />
-            <div>
-              <p className="text-lg font-black text-muted-gray">AI의 답</p>
-              <p className="mt-3 break-words text-5xl font-black text-screen-white sm:text-7xl">
-                {resultAIGuess?.text ?? "모르겠음"}
-              </p>
-              {resultAIGuess?.confidence !== undefined ? (
-                <p className="mt-3 text-sm font-bold text-muted-gray">
-                  신뢰도 {formatConfidence(resultAIGuess.confidence)}
-                </p>
-              ) : null}
-            </div>
-            <div className="grid gap-2 text-lg font-black">
-              <p className={teamResult.aiCorrect ? "text-health-green" : "text-joystick-red"}>
-                {teamResult.aiCorrect ? "AI 정답" : "AI 오답"}
-              </p>
-              <p className="text-muted-gray">
-                정답 <span className="text-coin-yellow">{roundResult.correctWord}</span>
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        {resultSlide === "showdown" ? (
-          <div className="grid flex-1 place-items-center gap-6 text-center">
-            <div>
-              <p className="font-arcade text-sm text-electric-cyan">승부 결과</p>
-              <p className={`mt-4 text-5xl font-black sm:text-7xl ${winnerClass}`}>
-                {teamResult.winner}
-              </p>
-            </div>
-            <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-2">
-              <div className="border border-pixel-blue bg-panel-gray p-4">
-                <p className="text-sm font-black text-muted-gray">AI 조건</p>
-                <p className="mt-2 text-2xl font-black text-screen-white">
-                  {teamResult.aiCorrect ? "+100" : "+0"}
-                </p>
-                <p className="mt-1 text-sm text-muted-gray">
-                  {teamResult.aiCorrect ? "정답을 맞혔습니다." : "정답을 맞히지 못했습니다."}
-                </p>
-              </div>
-              <div className="border border-health-green bg-panel-gray p-4">
-                <p className="text-sm font-black text-muted-gray">HUMAN 조건</p>
-                <p className="mt-2 text-2xl font-black text-screen-white">
-                  {teamResult.roundTeamScores.human > 0 ? "+100" : "+0"}
-                </p>
-                <p className="mt-1 text-sm text-muted-gray">
-                  사람 정답률 {humanRate} ({teamResult.humanCorrectCount}/
-                  {teamResult.humanTargetCount})
-                </p>
-              </div>
-            </div>
-            <div className="grid w-full max-w-2xl gap-3 border border-line-gray bg-panel-gray p-4 sm:grid-cols-2">
-              <div className="arcade-meter">
-                <span>AI 누적</span>
-                <strong>{teamResult.cumulativeTeamScores.ai}</strong>
-              </div>
-              <div className="arcade-meter">
-                <span>HUMAN 누적</span>
-                <strong>{teamResult.cumulativeTeamScores.human}</strong>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {resultSlide === "human-answers" ? (
-          <div className="grid content-start gap-5">
-            <div>
-              <p className="font-arcade text-xs text-electric-cyan">참가자 답변</p>
-              <h3 className="mt-2 text-3xl font-black text-screen-white">
-                참가자 답변
-              </h3>
-              <p className="mt-2 text-sm font-bold text-muted-gray">
-                정답률 {humanRate} · {teamResult.humanCorrectCount}/
-                {teamResult.humanTargetCount}명 정답
-              </p>
-            </div>
-            {resultHumanGuesses.length > 0 ? (
-              <ul className="grid gap-3">
-                {resultHumanGuesses.map((guess) => (
-                  <li
-                    className="flex min-h-14 flex-wrap items-center justify-between gap-3 border border-line-gray bg-panel-gray px-4 py-3"
-                    key={guess.guessId}
-                  >
-                    <span className="font-black text-screen-white">
-                      {guess.nickname}
-                    </span>
-                    <span className="break-words text-lg font-black text-coin-yellow">
-                      {guess.text}
-                    </span>
-                    <span
-                      className={
-                        guess.isCorrect
-                          ? "arcade-badge arcade-badge-green"
-                          : "arcade-badge arcade-badge-red"
-                      }
-                    >
-                      {guess.isCorrect ? "정답" : "오답"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="border border-line-gray bg-panel-gray p-4 text-sm font-bold text-muted-gray">
-                제출된 답변이 없습니다.
-              </p>
-            )}
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-gray pt-4">
-          {isHost ? (
-            <>
-              <button
-                className="arcade-button arcade-button-ghost"
-                disabled={!previousSlide}
-                onClick={() => previousSlide && syncResultSlide(previousSlide)}
-                type="button"
-              >
-                <ArrowLeft aria-hidden="true" size={18} />
-                이전
-              </button>
-              {nextSlide ? (
-                <button
-                  className="arcade-button arcade-button-primary"
-                  onClick={() => syncResultSlide(nextSlide)}
-                  type="button"
-                >
-                  다음
-                  <SkipForward aria-hidden="true" size={18} />
-                </button>
-              ) : (
-                <button
-                  className="arcade-button arcade-button-primary"
-                  onClick={goNextRound}
-                  type="button"
-                >
-                  {isFinalRound ? (
-                    <Trophy aria-hidden="true" size={18} />
-                  ) : (
-                    <SkipForward aria-hidden="true" size={18} />
-                  )}
-                  {isFinalRound ? "최종 결과 보기" : "다음 라운드"}
-                </button>
-              )}
-            </>
-          ) : (
-            <p className="text-sm font-bold text-muted-gray">
-              호스트가 결과 화면을 넘기고 있습니다.
-            </p>
-          )}
-        </div>
-      </div>
+      <DrawDuelRoundResult
+        isFinalRound={isFinalRound}
+        isHost={isHost}
+        onGoNextRound={goNextRound}
+        onSyncResultSlide={syncResultSlide}
+        resultSlide={resultSlide}
+        roundResult={roundResult}
+      />
     );
   }
 
@@ -1168,11 +1041,82 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
     );
   }
 
+  function renderWaitingLobbySummary() {
+    if (!room) {
+      return null;
+    }
+
+    return (
+      <div className="grid gap-3 border border-line-gray bg-console-black p-4" data-testid="draw-duel-waiting-lobby">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-arcade text-xs text-health-green">JOINED</p>
+            <h3 className="mt-1 text-2xl font-black text-screen-white">입장 완료</h3>
+          </div>
+          <div className="arcade-badge arcade-badge-yellow min-h-10 px-3">
+            방&nbsp;<span className="font-arcade">{room.roomCode}</span>
+          </div>
+        </div>
+        <div className="grid gap-2 text-sm font-bold text-muted-gray">
+          <p>
+            내 닉네임: <strong className="text-screen-white">{currentPlayer?.nickname}</strong>
+          </p>
+          <p>호스트가 시작하면 자동으로 게임 화면으로 이동합니다.</p>
+          <p>
+            설정: {drawerModeText(room.settings.drawerMode)} · {room.settings.maxRounds}R ·{" "}
+            {roundDurationText(room.settings.roundDurationSeconds)}
+          </p>
+        </div>
+        <section className="grid gap-2">
+          <h4 className="flex items-center justify-between gap-3 text-sm font-black text-screen-white">
+            <span>참가자</span>
+            <span className="font-arcade text-coin-yellow">{connectedPlayerCount}명</span>
+          </h4>
+          <ul className="grid max-h-48 gap-2 overflow-y-auto sm:grid-cols-2">
+            {room.players.map((player) => (
+              <li
+                className="flex min-h-10 items-center justify-between gap-3 border border-line-gray bg-panel-gray px-3 py-2"
+                key={player.playerId}
+              >
+                <span className="min-w-0 truncate font-black text-screen-white">
+                  {player.nickname}
+                </span>
+                <span
+                  className={
+                    player.connectionStatus === "connected"
+                      ? "arcade-badge arcade-badge-green"
+                      : "arcade-badge arcade-badge-red"
+                  }
+                >
+                  {player.connectionStatus === "connected" ? "ON" : "OFF"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <div className="flex justify-end">
+          <button
+            className="arcade-button arcade-button-danger min-h-10 px-3 py-2 text-sm"
+            onClick={() => setPendingDangerAction("leave")}
+            type="button"
+          >
+            <LogOut aria-hidden="true" size={16} />
+            나가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <main className="min-h-[100svh] bg-console-black text-screen-white">
       <div className="screen-grid min-h-[100svh] px-3 py-3 sm:px-5 sm:py-8">
-        <div className="mx-auto flex min-h-[100svh] w-full max-w-6xl flex-col">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="mx-auto flex min-h-[calc(100svh-1.5rem)] w-full max-w-6xl flex-col sm:min-h-[calc(100svh-4rem)]">
+          <div
+            className={`flex flex-wrap items-center justify-between gap-4 ${
+              isMobileCompactRoomView ? "hidden sm:flex" : ""
+            }`}
+          >
             <Link className="arcade-button arcade-button-ghost w-fit" href="/">
               <ArrowLeft aria-hidden="true" size={18} />
               허브로
@@ -1197,12 +1141,18 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
             <div className={room ? "hidden" : undefined}>
               <p className="font-arcade text-sm text-electric-cyan">Draw Duel</p>
               <h1 className="mt-4 text-3xl font-black leading-tight sm:text-5xl">
-                {isJoinOnly ? "닉네임을 입력하고 참가하세요" : "방을 만들거나 코드로 참가하세요"}
+                {isHostOnly
+                  ? "진행자 방을 만드세요"
+                  : isJoinOnly
+                    ? "닉네임을 입력하고 참가하세요"
+                    : "방을 만들거나 코드로 참가하세요"}
               </h1>
               <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-gray">
-                {isJoinOnly
-                  ? "이미 받은 방 코드로 입장합니다. 닉네임만 정하면 바로 참가할 수 있습니다."
-                  : "QR로 빠르게 입장하고, 끊긴 참가자는 같은 브라우저에서 60초 안에 복구할 수 있습니다. AI 추측은 서버에서 안전하게 운영됩니다."}
+                {isHostOnly
+                  ? "워크숍 진행자는 여기서 방을 열고 QR, 스크린, 운영 모니터 링크를 공유할 수 있습니다."
+                  : isJoinOnly
+                    ? "이미 받은 방 코드로 입장합니다. 닉네임만 정하면 바로 참가할 수 있습니다."
+                    : "QR로 빠르게 입장하고, 끊긴 참가자는 같은 브라우저에서 60초 안에 복구할 수 있습니다. AI 추측은 서버에서 안전하게 운영됩니다."}
               </p>
 
               {errorMessage ? (
@@ -1226,7 +1176,59 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                     : "arcade-panel p-5 sm:p-6"
                 }
               >
-                <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
+                {isPlayingView ? (
+                  <div className="grid gap-2 sm:hidden">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="arcade-badge arcade-badge-yellow min-h-9 px-3">
+                          방&nbsp;<span className="font-arcade">{room.roomCode}</span>
+                        </div>
+                        <p className="mt-1 truncate text-xs font-bold text-muted-gray">
+                          {currentPlayer?.nickname}
+                        </p>
+                      </div>
+                      <button
+                        aria-expanded={isPlayerMenuOpen}
+                        aria-label="플레이 메뉴"
+                        className="arcade-button arcade-button-ghost h-11 w-11 p-0"
+                        onClick={() => setIsPlayerMenuOpen((current) => !current)}
+                        type="button"
+                      >
+                        <Settings2 aria-hidden="true" size={18} />
+                      </button>
+                    </div>
+                    {isPlayerMenuOpen ? (
+                      <div className="grid gap-2 border border-line-gray bg-console-black p-2">
+                        <Link className="arcade-button arcade-button-ghost w-full" href="/">
+                          <ArrowLeft aria-hidden="true" size={18} />
+                          허브로
+                        </Link>
+                        <div className="arcade-badge arcade-badge-cyan min-h-11 justify-center px-4">
+                          {connectionStatus === "connected" ? (
+                            <PlugZap aria-hidden="true" size={16} />
+                          ) : (
+                            <Plug aria-hidden="true" size={16} />
+                          )}
+                          <span className="ml-2">{statusText(connectionStatus)}</span>
+                        </div>
+                        <button
+                          className="arcade-button arcade-button-danger w-full"
+                          onClick={() => setPendingDangerAction("leave")}
+                          type="button"
+                        >
+                          <LogOut aria-hidden="true" size={18} />
+                          나가기
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div
+                  className={`flex flex-wrap items-start justify-between gap-3 sm:gap-4 ${
+                    isMobileCompactRoomView ? "hidden sm:flex" : ""
+                  }`}
+                >
                   <div>
                     <p className="font-arcade text-xs text-electric-cyan">방 코드</p>
                     <h2 className="mt-1 font-arcade text-2xl text-coin-yellow sm:mt-2 sm:text-5xl">
@@ -1236,7 +1238,11 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                       내 닉네임: <strong className="text-screen-white">{currentPlayer?.nickname}</strong>
                     </p>
                   </div>
-                  <button className="arcade-button arcade-button-danger" onClick={leaveRoom} type="button">
+                  <button
+                    className="arcade-button arcade-button-danger"
+                    onClick={() => setPendingDangerAction("leave")}
+                    type="button"
+                  >
                     <LogOut aria-hidden="true" size={18} />
                     나가기
                   </button>
@@ -1271,7 +1277,9 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
 
                     <div className="mt-3 grid gap-3 sm:mt-6 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_360px]">
                   <div className="grid content-start gap-3 sm:gap-4">
-                    {roundResult ? (
+                    {room.status === "waiting" ? (
+                      renderWaitingLobbySummary()
+                    ) : roundResult ? (
                       renderResultSlide()
                     ) : (
                       <>
@@ -1303,10 +1311,12 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                           canDraw={canDraw}
                           currentPlayerId={currentPlayerId}
                           drawStatus={drawStatus}
+                          drawingPrompt={isDrawer ? (word?.word ?? "불러오는 중") : null}
                           compact={isPlayingView}
                           initialStrokes={initialBoardStrokes}
                           room={room}
                           socket={activeSocket}
+                          viewerRole={isDrawer ? "drawer" : "guesser"}
                         />
                       </>
                     )}
@@ -1316,31 +1326,14 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                     {currentRound ? <div className="hidden lg:block">{renderRoundSummary()}</div> : null}
 
                     {currentRound?.status === "drawing" && !isDrawer ? (
-                      <form
-                        className="sticky bottom-2 z-20 grid gap-2 border border-line-gray bg-console-black p-3 shadow-panel sm:static sm:gap-3 sm:p-4"
+                      <DrawDuelAnswerPanel
+                        canGuess={canGuess}
+                        guessText={guessText}
+                        hasSubmittedGuess={hasSubmittedGuess}
+                        onGuessTextChange={setGuessText}
                         onSubmit={submitGuess}
-                      >
-                        <h3 className="flex items-center gap-2 text-lg font-black sm:text-xl">
-                          <Send aria-hidden="true" className="text-health-green" size={22} />
-                          내 답변
-                        </h3>
-                        <input
-                          className="arcade-input"
-                          disabled={!canGuess}
-                          maxLength={40}
-                          onChange={(event) => setGuessText(event.target.value)}
-                          placeholder={hasSubmittedGuess ? "제출 완료" : "정답을 입력하세요"}
-                          value={guessText}
-                        />
-                        <button
-                          className="arcade-button arcade-button-secondary"
-                          disabled={!canGuess || !guessText.trim()}
-                          type="submit"
-                        >
-                          <Send aria-hidden="true" size={18} />
-                          {hasSubmittedGuess ? "제출 완료" : "제출"}
-                        </button>
-                      </form>
+                        submittedGuessText={submittedGuess?.text ?? null}
+                      />
                     ) : null}
 
                     {isHost ? (
@@ -1361,7 +1354,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                           </button>
                           <button
                             className="arcade-button arcade-button-danger"
-                            onClick={resetRoom}
+                            onClick={() => setPendingDangerAction("reset")}
                             type="button"
                           >
                             <RotateCcw aria-hidden="true" size={18} />
@@ -1411,6 +1404,17 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                                 <p className="mt-2 break-all text-sm font-bold leading-6 text-screen-white">
                                   {joinUrl}
                                 </p>
+                                <div className="mt-3 grid gap-2 text-xs font-bold leading-5 text-muted-gray">
+                                  <p className="break-all">
+                                    플레이 화면 <span className="text-screen-white">{playUrl}</span>
+                                  </p>
+                                  <p className="break-all">
+                                    대형 스크린 <span className="text-screen-white">{screenUrl}</span>
+                                  </p>
+                                  <p className="break-all">
+                                    운영 모니터 <span className="text-screen-white">{adminUrl}</span>
+                                  </p>
+                                </div>
                                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                                   <button
                                     className="arcade-button arcade-button-primary"
@@ -1442,7 +1446,11 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                     ) : null}
 
                     {room.status === "waiting" ? (
-                      <div className="grid gap-4 border border-line-gray bg-console-black p-4">
+                      <div
+                        className={`grid gap-4 border border-line-gray bg-console-black p-4 ${
+                          isHost ? "" : "hidden sm:grid"
+                        }`}
+                      >
                         <h3 className="flex items-center gap-2 text-xl font-black">
                           <Settings2 aria-hidden="true" className="text-electric-cyan" size={22} />
                           게임 설정
@@ -1560,6 +1568,46 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                                 ))}
                               </select>
                             </label>
+
+                            <div className="grid gap-2">
+                              <p className="text-sm font-black text-muted-gray">대형 스크린 참가 코드</p>
+                              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                                <button
+                                  aria-pressed={room.settings.screenJoinCodeVisibility === "waiting-only"}
+                                  className={`arcade-button ${
+                                    room.settings.screenJoinCodeVisibility === "waiting-only"
+                                      ? "arcade-button-primary"
+                                      : "arcade-button-ghost"
+                                  }`}
+                                  onClick={() =>
+                                    updateSettings({
+                                      ...room.settings,
+                                      screenJoinCodeVisibility: "waiting-only",
+                                    })
+                                  }
+                                  type="button"
+                                >
+                                  대기 중만 표시
+                                </button>
+                                <button
+                                  aria-pressed={room.settings.screenJoinCodeVisibility === "always"}
+                                  className={`arcade-button ${
+                                    room.settings.screenJoinCodeVisibility === "always"
+                                      ? "arcade-button-secondary"
+                                      : "arcade-button-ghost"
+                                  }`}
+                                  onClick={() =>
+                                    updateSettings({
+                                      ...room.settings,
+                                      screenJoinCodeVisibility: "always",
+                                    })
+                                  }
+                                  type="button"
+                                >
+                                  라운드 중 표시
+                                </button>
+                              </div>
+                            </div>
                           </>
                         ) : (
                           <div className="grid gap-3 border border-line-gray bg-panel-gray p-4">
@@ -1583,6 +1631,12 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                                 <dt className="text-muted-gray">라운드 시간</dt>
                                 <dd className="font-black text-screen-white">
                                   {roundDurationText(room.settings.roundDurationSeconds)}
+                                </dd>
+                              </div>
+                              <div className="flex flex-wrap justify-between gap-2">
+                                <dt className="text-muted-gray">스크린 코드</dt>
+                                <dd className="font-black text-screen-white">
+                                  {screenJoinCodeVisibilityText(room.settings.screenJoinCodeVisibility)}
                                 </dd>
                               </div>
                             </dl>
@@ -1617,7 +1671,7 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                             ) : null}
                           </div>
                         ) : currentRound.status === "drawing" && isDrawer ? (
-                          <div className="border-2 border-coin-yellow bg-panel-gray p-4">
+                          <div className="hidden border-2 border-coin-yellow bg-panel-gray p-4 sm:block">
                             <p className="text-sm font-black text-muted-gray">제시어</p>
                             <p className="mt-2 text-3xl font-black text-coin-yellow" data-testid="draw-duel-word">
                               {word?.word ?? "불러오는 중"}
@@ -1634,21 +1688,27 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                         )}
                       </div>
                     ) : (
-                      <div className="grid gap-3 border border-line-gray bg-console-black p-4">
+                      <div
+                        className={`grid gap-3 border border-line-gray bg-console-black p-4 ${
+                          isHost ? "" : "hidden sm:grid"
+                        }`}
+                      >
                         <p className="text-sm leading-6 text-muted-gray">
                           {isHost
                             ? "2명 이상 모이면 게임을 시작할 수 있습니다."
                             : "호스트가 게임을 시작합니다."}
                         </p>
-                        <button
-                          className="arcade-button arcade-button-primary"
-                          disabled={!canStart}
-                          onClick={startGame}
-                          type="button"
-                        >
-                          <Play aria-hidden="true" size={18} />
-                          게임 시작
-                        </button>
+                        {isHost ? (
+                          <button
+                            className="arcade-button arcade-button-primary"
+                            disabled={!canStart}
+                            onClick={startGame}
+                            type="button"
+                          >
+                            <Play aria-hidden="true" size={18} />
+                            게임 시작
+                          </button>
+                        ) : null}
                       </div>
                     )}
 
@@ -1656,6 +1716,32 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
                     </div>
                   </>
                 )}
+              </section>
+            ) : isHostOnly ? (
+              <section className="grid gap-4">
+                <form className="arcade-panel p-5 sm:p-6" onSubmit={submitCreateRoom}>
+                  <div className="flex items-center gap-3 text-coin-yellow">
+                    <Ticket aria-hidden="true" size={24} />
+                    <h2 className="text-2xl font-black text-screen-white">진행자 방 만들기</h2>
+                  </div>
+                  <label className="mt-5 block text-sm font-black" htmlFor="create-nickname">
+                    진행자 닉네임
+                  </label>
+                  <input
+                    className="arcade-input mt-2"
+                    id="create-nickname"
+                    maxLength={12}
+                    minLength={2}
+                    onChange={(event) => setCreateNickname(event.target.value)}
+                    placeholder="예: 진행자"
+                    required
+                    value={createNickname}
+                  />
+                  <button className="arcade-button arcade-button-primary mt-5 w-full" type="submit">
+                    <Ticket aria-hidden="true" size={18} />
+                    방 만들기
+                  </button>
+                </form>
               </section>
             ) : isJoinOnly ? (
               <section className="grid gap-4">
@@ -1784,6 +1870,44 @@ export function DrawDuelLobby({ entryMode = "full" }: DrawDuelLobbyProps) {
           </section>
         </div>
       </div>
+
+      {pendingDangerAction ? (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center bg-console-black/85 px-4 py-6"
+          role="dialog"
+        >
+          <div className="arcade-panel grid w-full max-w-md gap-4 border-2 border-joystick-red bg-panel-gray p-5 shadow-panel">
+            <div>
+              <p className="font-arcade text-xs text-joystick-red">CONFIRM</p>
+              <h3 className="mt-2 text-2xl font-black text-screen-white">
+                {pendingDangerAction === "leave" ? "방에서 나갈까요?" : "방을 리셋할까요?"}
+              </h3>
+              <p className="mt-2 text-sm font-bold leading-6 text-muted-gray">
+                {pendingDangerAction === "leave"
+                  ? "현재 방을 떠납니다. 같은 브라우저라면 다시 입장할 수 있습니다."
+                  : "방 코드는 유지하고 진행 상태, 점수, 캔버스, 타이머를 초기화합니다."}
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                className="arcade-button arcade-button-ghost"
+                onClick={() => setPendingDangerAction(null)}
+                type="button"
+              >
+                취소
+              </button>
+              <button
+                className="arcade-button arcade-button-danger"
+                onClick={confirmDangerAction}
+                type="button"
+              >
+                {pendingDangerAction === "leave" ? "나가기" : "리셋"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isQrModalOpen && isHost && room ? (
         <div

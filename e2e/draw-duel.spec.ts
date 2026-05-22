@@ -16,7 +16,7 @@ async function createHostRoom(browser: Browser, nickname: string) {
   const hostContext = await browser.newContext();
   const hostPage = await hostContext.newPage();
 
-  await hostPage.goto("/games/draw-duel");
+  await hostPage.goto("/host");
   await waitForRealtimeReady(hostPage);
   await hostPage.locator("#create-nickname").fill(nickname);
   await hostPage.getByRole("button", { name: "방 만들기" }).click();
@@ -45,7 +45,7 @@ async function createJoinedRoom(
   const guestContext = await browser.newContext();
   const guestPage = await guestContext.newPage();
 
-  await guestPage.goto(`/games/draw-duel/join?roomCode=${host.roomCode}`);
+  await guestPage.goto(`/join/${host.roomCode}`);
   await waitForRealtimeReady(guestPage);
   await expect(guestPage.locator("#join-room-code")).toHaveCount(0);
   await expect(guestPage.locator("body")).toContainText(host.roomCode);
@@ -94,7 +94,7 @@ test.describe("Draw Duel pilot readiness", () => {
     await expect(quickJoinButton).toBeEnabled();
     await quickJoinButton.click();
 
-    await expect(page).toHaveURL(/\/games\/draw-duel\/join\?roomCode=ABC123/);
+    await expect(page).toHaveURL(/\/join\/ABC123/);
     await waitForRealtimeReady(page);
     await expect(page.locator("body")).toContainText("ABC123");
     await expect(page.locator("#join-room-code")).toHaveCount(0);
@@ -119,20 +119,20 @@ test.describe("Draw Duel pilot readiness", () => {
       await expect(room.hostPage.getByText("참가 링크")).toHaveCount(0);
       await room.hostPage.getByRole("button", { name: /QR 입장/ }).click();
       await expect(room.hostPage.getByText("참가 링크")).toBeVisible();
-      await expect(room.hostPage.getByText("/games/draw-duel/join?roomCode=")).toBeVisible();
-      await expect(room.hostPage.getByText(`roomCode=${room.roomCode}`)).toBeVisible();
+      await expect(room.hostPage.getByText(`/join/${room.roomCode}`)).toBeVisible();
+      await expect(room.hostPage.getByText(`/screen/${room.roomCode}`)).toBeVisible();
       await room.hostPage.getByRole("button", { name: "크게 보기" }).click();
       await expect(room.hostPage.getByRole("dialog")).toContainText(room.roomCode);
       await room.hostPage.getByLabel("QR 모달 닫기").click();
       await expect(room.hostPage.getByRole("dialog")).toHaveCount(0);
 
       await setMaxRounds(room.hostPage, 1);
-      await setRoundDuration(room.hostPage, "30");
+      await setRoundDuration(room.hostPage, "90");
       await room.hostPage.getByRole("button", { name: "게임 시작" }).click();
       await expect(room.hostPage.locator("body")).toContainText("이번 라운드의 출제자입니다.");
       await expect(room.guestPage.locator("body")).toContainText("host-pilot가 그리고 있습니다.");
       await expect(room.hostPage.locator("body")).toContainText("1/1");
-      await expect(room.hostPage.locator("body")).toContainText(/(29|30)초/);
+      await expect(room.hostPage.locator("body")).toContainText(/(89|90)초/);
       const answer = (await room.hostPage.getByTestId("draw-duel-word").innerText()).trim();
 
       await room.guestPage.reload();
@@ -195,6 +195,8 @@ test.describe("Draw Duel pilot readiness", () => {
       await expect(room.hostPage.locator("body")).toContainText("guest-rotate가 그리고 있습니다.");
 
       await room.hostPage.getByRole("button", { name: "방 리셋" }).click();
+      await expect(room.hostPage.getByRole("dialog")).toContainText("방을 리셋할까요?");
+      await room.hostPage.getByRole("button", { exact: true, name: "리셋" }).click();
       await expect(room.hostPage.locator("body")).toContainText("게임 설정");
       await expect(room.hostPage.getByRole("button", { name: "순서대로 교대" })).toHaveAttribute(
         "aria-pressed",
@@ -238,7 +240,7 @@ test.describe("Draw Duel pilot readiness", () => {
     const guestPage = await guestContext.newPage();
 
     try {
-      await guestPage.goto(`/games/draw-duel/join?roomCode=${host.roomCode}`);
+      await guestPage.goto(`/play/${host.roomCode}`);
       await waitForRealtimeReady(guestPage);
       await guestPage.locator("#join-nickname").fill("guest-mobile-play");
       await guestPage.getByRole("button", { name: "입장하기" }).click();
@@ -292,7 +294,7 @@ test.describe("Draw Duel pilot readiness", () => {
     const hostPage = await hostContext.newPage();
 
     try {
-      await hostPage.goto("/games/draw-duel");
+      await hostPage.goto("/host");
       await waitForRealtimeReady(hostPage);
       await hostPage.locator("#create-nickname").fill("host-mobile");
       await hostPage.getByRole("button", { name: "방 만들기" }).click();

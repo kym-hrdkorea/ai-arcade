@@ -10,6 +10,7 @@ export const ROOM_MAX_PLAYERS = 100;
 export type RoomStatus = "waiting" | "playing" | "ended";
 export type PlayerConnectionStatus = "connected" | "disconnected";
 export type DrawDuelDrawerMode = "host-only" | "rotate";
+export type DrawDuelScreenJoinCodeVisibility = "always" | "waiting-only";
 
 export const DRAW_DUEL_MAX_ROUNDS_MIN = 1;
 export const DRAW_DUEL_MAX_ROUNDS_MAX = 10;
@@ -18,6 +19,7 @@ export const DEFAULT_DRAW_DUEL_SETTINGS = {
   drawerMode: "host-only",
   maxRounds: 5,
   roundDurationSeconds: 45,
+  screenJoinCodeVisibility: "waiting-only",
 } satisfies DrawDuelSettings;
 
 export type DrawDuelRoundDurationSeconds =
@@ -27,6 +29,7 @@ export type DrawDuelSettings = {
   drawerMode: DrawDuelDrawerMode;
   maxRounds: number;
   roundDurationSeconds: DrawDuelRoundDurationSeconds;
+  screenJoinCodeVisibility: DrawDuelScreenJoinCodeVisibility;
 };
 
 export type PlayerState = {
@@ -226,6 +229,10 @@ export type RoomJoinPayload = {
   nickname: string;
 };
 
+export type RoomWatchPayload = {
+  roomCode: string;
+};
+
 export type RoomRejoinPayload = {
   roomCode: string;
   playerId: string;
@@ -244,6 +251,16 @@ export type RoomJoinedPayload = {
   room: RoomState;
   currentPlayerId: string;
   reconnectToken: string;
+};
+
+export type RoomWatchSnapshotPayload = {
+  gameResult?: DrawDuelGameResultPayload;
+  resultSlide?: DrawDuelResultSlideSetPayload;
+  room: RoomState;
+  roundResult?: DrawDuelRoundResultPayload;
+  roundState?: DrawDuelRoundStatePayload;
+  strokeHistory: DrawStrokeHistoryPayload;
+  timer?: DrawDuelTimerTickPayload;
 };
 
 export type GameStartPayload = {
@@ -297,6 +314,10 @@ export type ClientToServerEvents = {
     ack?: EventAck<RoomJoinedPayload>,
   ) => void;
   "room:join": (payload: RoomJoinPayload, ack?: EventAck<RoomJoinedPayload>) => void;
+  "room:watch": (
+    payload: RoomWatchPayload,
+    ack?: EventAck<RoomWatchSnapshotPayload>,
+  ) => void;
   "room:rejoin": (
     payload: RoomRejoinPayload,
     ack?: EventAck<RoomJoinedPayload>,
@@ -436,6 +457,10 @@ export const roomJoinPayloadSchema = z.object({
   nickname: nicknameSchema,
 });
 
+export const roomWatchPayloadSchema = z.object({
+  roomCode: roomCodeSchema,
+});
+
 export const roomRejoinPayloadSchema = z.object({
   roomCode: roomCodeSchema,
   playerId: z.string().uuid("playerId format is invalid."),
@@ -456,6 +481,7 @@ export const gameStartPayloadSchema = z.object({
 });
 
 export const drawDuelDrawerModeSchema = z.enum(["host-only", "rotate"]);
+export const drawDuelScreenJoinCodeVisibilitySchema = z.enum(["always", "waiting-only"]);
 
 export const drawDuelRoundDurationSecondsSchema = z.union(
   DRAW_DUEL_ROUND_DURATION_OPTIONS.map((duration) => z.literal(duration)) as [
@@ -474,6 +500,7 @@ export const drawDuelSettingsSchema = z.object({
     .min(DRAW_DUEL_MAX_ROUNDS_MIN, "라운드 수는 1 이상이어야 합니다.")
     .max(DRAW_DUEL_MAX_ROUNDS_MAX, "라운드 수는 10 이하여야 합니다."),
   roundDurationSeconds: drawDuelRoundDurationSecondsSchema,
+  screenJoinCodeVisibility: drawDuelScreenJoinCodeVisibilitySchema,
 });
 
 export const drawDuelSettingsUpdatePayloadSchema = z.object({

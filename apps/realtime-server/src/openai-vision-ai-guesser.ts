@@ -6,6 +6,7 @@ import {
   type AIGuesserScoringContext,
   normalizeAIGuesserText,
 } from "./ai-guesser.js";
+import { guessDrawDuelTemplate } from "./draw-duel-template-guesser.js";
 
 export type OpenAIImageDetail = "auto" | "high" | "low";
 export type OpenAIReasoningEffort = "high" | "low" | "medium";
@@ -47,14 +48,15 @@ type OpenAIContentPart =
     };
 
 const defaultModel = "gpt-5";
-const defaultTimeoutMs = 15_000;
+const defaultTimeoutMs = 11_500;
+const maxTimeoutMs = 11_500;
 const maxCandidates = 5;
 const maxCommentarySteps = 4;
 const openAIResponsesUrl = "https://api.openai.com/v1/responses";
 const candidateResponseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["candidates", "commentarySteps"],
+  required: ["candidates"],
   properties: {
     candidates: {
       type: "array",
@@ -78,16 +80,6 @@ const candidateResponseSchema = {
         },
       },
     },
-    commentarySteps: {
-      type: "array",
-      minItems: 2,
-      maxItems: maxCommentarySteps,
-      items: {
-        type: "string",
-        minLength: 1,
-        maxLength: 90,
-      },
-    },
   },
 };
 
@@ -97,8 +89,15 @@ type ParsedAIResponse = {
 };
 
 class OpenAIStatusError extends Error {
-  constructor(public readonly status: number) {
-    super(`OpenAI Responses API failed with status ${status}.`);
+  constructor(
+    public readonly status: number,
+    providerMessage?: string,
+  ) {
+    super(
+      providerMessage
+        ? `OpenAI Responses API failed with status ${status}: ${providerMessage}`
+        : `OpenAI Responses API failed with status ${status}.`,
+    );
     this.name = "OpenAIStatusError";
   }
 }
@@ -150,8 +149,41 @@ function parseJsonObject(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
   } catch {
+    const objectStart = value.indexOf("{");
+    const objectEnd = value.lastIndexOf("}");
+
+    if (objectStart >= 0 && objectEnd > objectStart) {
+      try {
+        return JSON.parse(value.slice(objectStart, objectEnd + 1)) as unknown;
+      } catch {
+        throw new OpenAIOutputParseError("OpenAI response was not valid candidate JSON.");
+      }
+    }
+
     throw new OpenAIOutputParseError("OpenAI response was not valid candidate JSON.");
   }
+}
+
+function extractProviderErrorMessage(responseBody: unknown): string | undefined {
+  if (!isRecord(responseBody)) {
+    return undefined;
+  }
+
+  const error = responseBody.error;
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (!isRecord(error)) {
+    return undefined;
+  }
+
+  const message = typeof error.message === "string" ? error.message : undefined;
+  const code = typeof error.code === "string" ? error.code : undefined;
+  const type = typeof error.type === "string" ? error.type : undefined;
+
+  return [type, code, message].filter(Boolean).join(": ") || undefined;
 }
 
 function normalizeConfidence(value: unknown): number | undefined {
@@ -205,7 +237,10 @@ function normalizeCandidates(value: unknown): AIGuesserCandidate[] {
 
 function normalizeCommentarySteps(value: unknown, candidates: AIGuesserCandidate[]): string[] {
   if (!isRecord(value) || !Array.isArray(value.commentarySteps)) {
-    throw new OpenAIOutputParseError("OpenAI response did not include commentary steps.");
+    return [
+      "이 그림의 큰 형태를 먼저 보고 있어요.",
+      "보이는 단서를 조합해 답을 좁히고 있습니다.",
+    ];
   }
 
   const candidateKeys = new Set(
@@ -269,7 +304,7 @@ function normalizeTimeoutMs(value: number | undefined): number {
     return defaultTimeoutMs;
   }
 
-  return Math.min(30_000, Math.max(1_000, Math.round(value)));
+  return Math.min(maxTimeoutMs, Math.max(1_000, Math.round(value)));
 }
 
 function normalizeRetryLimit(value: number | undefined): number {
@@ -281,7 +316,7 @@ function normalizeRetryLimit(value: number | undefined): number {
 }
 
 function normalizeDetail(value: OpenAIImageDetail | undefined): OpenAIImageDetail {
-  return value === "auto" || value === "high" || value === "low" ? value : "auto";
+  return value === "auto" || value === "high" || value === "low" ? value : "low";
 }
 
 function normalizeReasoningEffort(
@@ -314,6 +349,10 @@ function errorMessageWithCause(error: Error): string {
 function isRetryableError(error: unknown): boolean {
   if (error instanceof OpenAIStatusError) {
     return error.status >= 500 && error.status < 600;
+  }
+
+  if (error instanceof OpenAIOutputParseError) {
+    return true;
   }
 
   if (isAbortError(error)) {
@@ -360,9 +399,23 @@ function describeError(error: unknown): string {
   return error.message;
 }
 
+function selectPromptSequenceFrames(input: AIGuesserInput) {
+  if (input.strokeSequence.length <= 2) {
+    return input.strokeSequence;
+  }
+
+  const firstFrame = input.strokeSequence[0];
+  const finalFrame = input.strokeSequence[input.strokeSequence.length - 1];
+
+  return [firstFrame, finalFrame].filter(
+    (frame): frame is NonNullable<typeof frame> => Boolean(frame),
+  );
+}
+
 function createPromptContent(
   input: AIGuesserInput,
   detail: OpenAIImageDetail,
+  category?: string,
 ): OpenAIContentPart[] {
   const content: OpenAIContentPart[] = [
     {
@@ -371,11 +424,14 @@ function createPromptContent(
         "You will receive a compact time-ordered stroke sequence from a live drawing game. " +
         "The frames represent the drawing at roughly 25%, 50%, 75%, and 100% of the stroke timeline when enough strokes exist. " +
         "Infer the intended object from the accumulating shape, not from written labels, decorative text, color tricks, arrows, or late distractor marks. " +
-        "Favor concrete common nouns. Also write short public Korean observation steps that narrow the category without naming your final answer.",
+        "The hidden answer comes from a fixed, child-safe word bank of everyday drawable objects, animals, foods, places, nature items, sports items, body parts, or symbols. " +
+        (category ? `The answer's broad category is ${category}. ` : "") +
+        "You are not given that word bank, so choose the closest ordinary drawable noun instead of inventing a rare or overly specific term. " +
+        "Favor concrete Korean common nouns.",
     },
   ];
 
-  for (const [index, frame] of input.strokeSequence.entries()) {
+  for (const [index, frame] of selectPromptSequenceFrames(input).entries()) {
     content.push({
       type: "input_text",
       text: `Frame ${index + 1}: t=${frame.second}s, strokes=${frame.strokeCount}.`,
@@ -441,34 +497,53 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
 
   async guess(
     input: AIGuesserInput,
-    _scoringContext: AIGuesserScoringContext,
+    scoringContext: AIGuesserScoringContext,
   ): Promise<AIGuesserOutput> {
+    const templateOutput = await guessDrawDuelTemplate(input);
+
+    if (templateOutput) {
+      this.logger.info(
+        `[ai] local template guess completed room=${input.roomCode} round=${input.roundId} frames=${input.strokeSequence.length} topCandidate="${templateOutput.text}"`,
+      );
+      return templateOutput;
+    }
+
     const maxAttempts = this.retryLimit + 1;
     const overallStartedAt = Date.now();
+    const deadlineAt = overallStartedAt + this.timeoutMs;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const remainingMs = deadlineAt - Date.now();
+
+      if (remainingMs <= 0) {
+        throw new Error("OpenAI guess exceeded the 12 second budget.");
+      }
+
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+      const timeout = setTimeout(() => controller.abort(), remainingMs);
 
       try {
         const requestBody: Record<string, unknown> = {
           model: this.model,
           instructions:
             "You are an AI player in a real-time drawing guessing game. " +
-            "Guess from quick, incomplete, messy, or mildly adversarial sketches. " +
-            "Prioritize persistent geometry, repeated strokes, object silhouette, and shape changes across the stroke sequence. " +
+            "Your outcome is a scored guess: the first candidate should be the most likely answer as one short Korean common noun. " +
+            "Guess from quick, incomplete, messy, sparse, or mildly adversarial sketches. " +
+            "The answer is expected to be a simple, everyday, child-safe drawing-game word, not a caption, sentence, rare subtype, brand, color-only description, or broad category. " +
+            "Prioritize persistent geometry, repeated strokes, object silhouette, distinctive parts, and shape changes across the stroke sequence. " +
             "Ignore readable text, labels, arrows, or obvious bait marks when the shape tells a different story. " +
-            "Prefer specific concrete Korean common nouns over broad categories, even when confidence is low. " +
-            "Use '모르겠음' only when the images are truly impossible to interpret. " +
-            "Return up to five candidate guesses ordered from most likely to least likely with confidence values. " +
-            "Also return 2-4 short Korean commentarySteps for players. These are public observations only: describe visible shapes, silhouette, or broad category narrowing, and do not reveal or repeat any final candidate word.",
+            "Prefer specific concrete Korean common nouns over broad categories, even when confidence is low; for example choose '고양이' rather than '동물', or '자동차' rather than '탈것'. " +
+            "Use '모르겠음' only when the canvas is blank or truly impossible to interpret. " +
+            "Return up to five distinct candidate guesses ordered from most likely to least likely with confidence values. " +
+            "If uncertain between aliases or close concepts, include both likely common nouns in the candidate list instead of returning a generic category. " +
+            "Return only the candidate JSON. Do not include commentary, explanations, markdown, or extra keys.",
           input: [
             {
               role: "user",
-              content: createPromptContent(input, this.detail),
+              content: createPromptContent(input, this.detail, scoringContext.category),
             },
           ],
-          max_output_tokens: 2048,
+          max_output_tokens: 768,
           store: false,
           text: {
             format: {
@@ -497,7 +572,15 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
         });
 
         if (!response.ok) {
-          throw new OpenAIStatusError(response.status);
+          let providerMessage: string | undefined;
+
+          try {
+            providerMessage = extractProviderErrorMessage((await response.json()) as unknown);
+          } catch {
+            providerMessage = undefined;
+          }
+
+          throw new OpenAIStatusError(response.status, providerMessage);
         }
 
         const body = (await response.json()) as unknown;
@@ -518,7 +601,8 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
         };
       } catch (error: unknown) {
         const reason = isAbortError(error) ? "timeout" : "error";
-        const canRetry = attempt < maxAttempts && isRetryableError(error);
+        const canRetry =
+          attempt < maxAttempts && Date.now() < deadlineAt && isRetryableError(error);
 
         if (canRetry) {
           this.logger.warn(

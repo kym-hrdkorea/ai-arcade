@@ -258,28 +258,43 @@ test.describe("public beta UX readiness", () => {
       await expect(guestPage.getByText("호스트가 시작 전 설정을 조정합니다.")).toBeVisible();
       await expect(guestPage.getByText("게임 설정")).toHaveCount(0);
       await expect(guestPage.getByRole("button", { name: /QR 입장/ })).toHaveCount(0);
-      await expect(host.hostPage.getByRole("button", { name: "45초" })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      await host.hostPage.getByRole("button", { name: "60초" }).click();
+      await expect(host.hostPage.locator("#real-ai-round-duration-select")).toHaveValue("45");
+      await host.hostPage.locator("#real-ai-round-duration-select").selectOption("60");
       await expect(guestPage.locator("body")).toContainText(/60\s*초 제한/);
 
       for (let count = 0; count < 9; count += 1) {
         await host.hostPage.getByLabel("라운드 줄이기").click();
       }
       await expect(host.hostPage.locator("body")).toContainText(/1\s*라운드/);
-      await host.hostPage.getByRole("button", { name: "5초" }).first().click();
-      await host.hostPage.getByRole("button", { name: "3초" }).click();
+      await host.hostPage.locator("#real-ai-round-duration-select").selectOption("5");
+      await host.hostPage.locator("#real-ai-countdown-select").selectOption("3");
       await expect(guestPage.locator("body")).toContainText(/1\s*라운드/);
       await expect(guestPage.locator("body")).toContainText(/5\s*초 제한/);
       await expect(guestPage.locator("body")).toContainText(/3\s*초 준비/);
 
       await host.hostPage.getByRole("button", { name: "게임 시작" }).click();
-      await expect(host.hostPage.getByText("카운트다운").first()).toBeVisible();
-      await expect(guestPage.getByText("카운트다운").first()).toBeVisible();
-      await expect(host.hostPage.getByText("진행 중").first()).toBeVisible({ timeout: 6000 });
+      await expect(host.hostPage.getByTestId("real-ai-countdown-panel")).toBeVisible();
+      await expect(guestPage.getByTestId("real-ai-countdown-panel")).toBeVisible();
+      await expect(guestPage.locator("body")).not.toContainText("방 코드");
+      await expect(guestPage.locator("body")).not.toContainText(host.roomCode);
+      await expect(guestPage.locator("body")).not.toContainText("방에 입장했습니다.");
+      await expect(guestPage.locator("body")).not.toContainText("허브로");
+      await expect(guestPage.locator("body")).not.toContainText("서버 연결");
+      await expect(guestPage.locator("body")).not.toContainText("설정 요약");
+      await expect(guestPage.locator("body")).not.toContainText("게임 설정");
+      await expect(guestPage.locator("body")).not.toContainText("대기실");
+      await expect(host.hostPage.getByTestId("real-ai-candidate-A")).toBeVisible({
+        timeout: 6000,
+      });
 
+      await expect(guestPage.locator("body")).not.toContainText("방 코드");
+      await expect(guestPage.locator("body")).not.toContainText(host.roomCode);
+      await expect(guestPage.locator("body")).not.toContainText("방에 입장했습니다.");
+      await expect(guestPage.locator("body")).not.toContainText("허브로");
+      await expect(guestPage.locator("body")).not.toContainText("서버 연결");
+      await expect(guestPage.locator("body")).not.toContainText("게임 설정");
+      await expect(guestPage.locator("body")).not.toContainText("QR 입장");
+      await expect(guestPage.getByRole("button", { name: "방 나가기" })).toBeInViewport();
       await expect(guestPage.getByAltText("후보 A 사진").first()).toBeVisible();
       await expect(guestPage.getByAltText("후보 B 사진").first()).toBeVisible();
       const candidateABox = await guestPage.getByTestId("real-ai-candidate-A").boundingBox();
@@ -307,12 +322,16 @@ test.describe("public beta UX readiness", () => {
       await expect(zoomDialog).toHaveCount(0);
 
       await guestPage.getByRole("button", { name: "후보 A 선택" }).click();
-      await guestPage.getByRole("button", { name: "진짜 사진으로 제출" }).click();
-      await expect(guestPage.getByText("제출 완료")).toBeVisible();
+      await guestPage.getByRole("button", { name: "진짜 사진 제출" }).click();
+      await expect(guestPage.getByTestId("real-ai-submit-bar")).toContainText(
+        "제출 완료 · 후보 A",
+      );
+      await expect(guestPage.getByTestId("real-ai-submit-answer")).toHaveText("제출 완료");
+      await expect(guestPage.getByTestId("real-ai-submit-answer")).toBeDisabled();
       await expect(host.hostPage.locator("body")).toContainText(/1\/2|1\s*\/\s*2/);
 
       await host.hostPage.getByRole("button", { name: "후보 B 선택" }).click();
-      await host.hostPage.getByRole("button", { name: "진짜 사진으로 제출" }).click();
+      await host.hostPage.getByRole("button", { name: "진짜 사진 제출" }).click();
       await expect(host.hostPage.getByText("라운드 1 / 1")).toBeVisible({ timeout: 6000 });
       await expect(host.hostPage.getByText("최고 득점")).toBeVisible();
       await expect(host.hostPage.getByText("정답").first()).toBeVisible();
@@ -335,18 +354,22 @@ test.describe("public beta UX readiness", () => {
     }
   });
 
-  test("keeps the Real or AI magnifier modal inside a mobile viewport", async ({
+  test("keeps the Real or AI play surface inside a narrow mobile viewport", async ({
     browser,
   }) => {
+    const mobileViewport = {
+      height: 800,
+      width: 360,
+    };
     const hostContext = await browser.newContext({
       isMobile: true,
-      viewport: {
-        height: 844,
-        width: 390,
-      },
+      viewport: mobileViewport,
     });
     const hostPage = await hostContext.newPage();
-    const guestContext = await browser.newContext();
+    const guestContext = await browser.newContext({
+      isMobile: true,
+      viewport: mobileViewport,
+    });
     const guestPage = await guestContext.newPage();
 
     try {
@@ -364,20 +387,121 @@ test.describe("public beta UX readiness", () => {
       await guestPage.getByRole("button", { name: "입장하기" }).click();
 
       await hostPage.getByLabel("라운드 줄이기").click();
-      await hostPage.getByRole("button", { name: "3초" }).click();
+      await hostPage.locator("#real-ai-countdown-select").selectOption("3");
       await hostPage.getByRole("button", { name: "게임 시작" }).click();
-      await expect(hostPage.getByText("진행 중").first()).toBeVisible({ timeout: 6000 });
-      await expect(hostPage.getByTestId("real-ai-candidate-A")).toBeInViewport();
-      await expect(hostPage.getByRole("button", { name: "후보 A 확대 도구" })).toBeInViewport();
+      const guestCountdownPanel = guestPage.getByTestId("real-ai-countdown-panel");
+      await expect(guestCountdownPanel).toBeVisible();
+      const guestCountdownBox = await guestCountdownPanel.boundingBox();
+      expect(guestCountdownBox).not.toBeNull();
+      expect(guestCountdownBox!.y).toBeGreaterThanOrEqual(240);
+      expect(guestCountdownBox!.y + guestCountdownBox!.height).toBeLessThanOrEqual(560);
+      await expect(guestPage.locator("body")).not.toContainText("방 코드");
+      await expect(guestPage.locator("body")).not.toContainText(roomCode);
+      await expect(guestPage.locator("body")).not.toContainText("방에 입장했습니다.");
+      await expect(guestPage.locator("body")).not.toContainText("허브로");
+      await expect(guestPage.locator("body")).not.toContainText("서버 연결");
+      await expect(guestPage.locator("body")).not.toContainText("게임 설정");
+      await expect(guestPage.locator("body")).not.toContainText("운영 패널");
+      await expect(guestPage.locator("body")).not.toContainText("QR 입장");
 
-      await hostPage.getByRole("button", { name: "후보 A 확대 도구" }).click();
+      await expect(hostPage.getByTestId("real-ai-candidate-A")).toBeVisible({
+        timeout: 6000,
+      });
+      await expect(guestPage.getByTestId("real-ai-candidate-A")).toBeVisible({
+        timeout: 6000,
+      });
+      await expect(hostPage.getByTestId("real-ai-candidate-A")).toBeInViewport();
+      await expect(hostPage.locator("body")).not.toContainText("설정 요약");
+
+      await expect(guestPage.locator("body")).not.toContainText("방 코드");
+      await expect(guestPage.locator("body")).not.toContainText(roomCode);
+      await expect(guestPage.locator("body")).not.toContainText("방에 입장했습니다.");
+      await expect(guestPage.locator("body")).not.toContainText("허브로");
+      await expect(guestPage.locator("body")).not.toContainText("서버 연결");
+      await expect(guestPage.locator("body")).not.toContainText("게임 설정");
+      await expect(guestPage.locator("body")).not.toContainText("운영 패널");
+      await expect(guestPage.locator("body")).not.toContainText("QR 입장");
+
+      const guestCandidateFrame = guestPage.getByTestId("real-ai-candidate-A-frame");
+      const guestFrameBox = await guestCandidateFrame.boundingBox();
+      const guestCandidateBBox = await guestPage.getByTestId("real-ai-candidate-B").boundingBox();
+      const guestSubmitBarBox = await guestPage.getByTestId("real-ai-submit-bar").boundingBox();
+      const guestMagnifierButton = guestPage.getByRole("button", { name: "후보 A 확대 도구" });
+      const guestZoomButton = guestPage.getByRole("button", { name: "후보 A 확대 보기" });
+      const guestLeaveButton = guestPage.getByRole("button", { name: "방 나가기" });
+      await expect(guestMagnifierButton).toBeInViewport();
+      await expect(guestZoomButton).toBeInViewport();
+      await expect(guestLeaveButton).toBeInViewport();
+      const guestMagnifierButtonBox = await guestMagnifierButton.boundingBox();
+      const guestZoomButtonBox = await guestZoomButton.boundingBox();
+      const guestLeaveButtonBox = await guestLeaveButton.boundingBox();
+      expect(guestFrameBox).not.toBeNull();
+      expect(guestCandidateBBox).not.toBeNull();
+      expect(guestSubmitBarBox).not.toBeNull();
+      expect(guestMagnifierButtonBox).not.toBeNull();
+      expect(guestZoomButtonBox).not.toBeNull();
+      expect(guestLeaveButtonBox).not.toBeNull();
+      expect(guestFrameBox!.width).toBeGreaterThanOrEqual(320);
+      expect(guestFrameBox!.height).toBeGreaterThanOrEqual(200);
+      expect(guestFrameBox!.height).toBeLessThanOrEqual(240);
+      expect(guestLeaveButtonBox!.y).toBeGreaterThanOrEqual(0);
+      expect(guestCandidateBBox!.y).toBeLessThan(mobileViewport.height);
+      expect(guestSubmitBarBox!.y + guestSubmitBarBox!.height).toBeLessThanOrEqual(
+        mobileViewport.height,
+      );
+      expect(boxesOverlap(guestFrameBox!, guestMagnifierButtonBox!)).toBe(false);
+      expect(boxesOverlap(guestFrameBox!, guestZoomButtonBox!)).toBe(false);
+      expect(boxesOverlap(guestFrameBox!, guestSubmitBarBox!)).toBe(false);
+
+      const candidateFrame = hostPage.getByTestId("real-ai-candidate-A-frame");
+      const frameBox = await candidateFrame.boundingBox();
+      expect(frameBox).not.toBeNull();
+      expect(frameBox!.width).toBeGreaterThanOrEqual(320);
+      expect(frameBox!.height).toBeGreaterThanOrEqual(200);
+      expect(frameBox!.height).toBeLessThanOrEqual(240);
+
+      const magnifierButton = hostPage.getByRole("button", { name: "후보 A 확대 도구" });
+      const zoomButton = hostPage.getByRole("button", { name: "후보 A 확대 보기" });
+      const leaveButton = hostPage.getByRole("button", { name: "방 나가기" });
+      await expect(magnifierButton).toBeInViewport();
+      await expect(zoomButton).toBeInViewport();
+      await expect(leaveButton).toBeInViewport();
+
+      const magnifierButtonBox = await magnifierButton.boundingBox();
+      const zoomButtonBox = await zoomButton.boundingBox();
+      const leaveButtonBox = await leaveButton.boundingBox();
+      const submitBarBox = await hostPage.getByTestId("real-ai-submit-bar").boundingBox();
+      const candidateBBox = await hostPage.getByTestId("real-ai-candidate-B").boundingBox();
+      const hostOperationStatusBox = await hostPage
+        .getByTestId("real-ai-operation-status")
+        .boundingBox();
+      const hostSkipButtonBox = await hostPage.getByTestId("real-ai-skip-round").boundingBox();
+      expect(magnifierButtonBox).not.toBeNull();
+      expect(zoomButtonBox).not.toBeNull();
+      expect(leaveButtonBox).not.toBeNull();
+      expect(submitBarBox).not.toBeNull();
+      expect(candidateBBox).not.toBeNull();
+      expect(hostOperationStatusBox).not.toBeNull();
+      expect(hostSkipButtonBox).not.toBeNull();
+      expect(leaveButtonBox!.y).toBeGreaterThanOrEqual(0);
+      expect(candidateBBox!.y).toBeLessThan(mobileViewport.height);
+      expect(submitBarBox!.y + submitBarBox!.height).toBeLessThanOrEqual(
+        mobileViewport.height,
+      );
+      expect(hostOperationStatusBox!.y).toBeGreaterThanOrEqual(
+        submitBarBox!.y + submitBarBox!.height,
+      );
+      expect(boxesOverlap(frameBox!, magnifierButtonBox!)).toBe(false);
+      expect(boxesOverlap(frameBox!, zoomButtonBox!)).toBe(false);
+      expect(boxesOverlap(frameBox!, submitBarBox!)).toBe(false);
+      expect(boxesOverlap(magnifierButtonBox!, submitBarBox!)).toBe(false);
+      expect(boxesOverlap(submitBarBox!, hostSkipButtonBox!)).toBe(false);
+
+      await magnifierButton.click();
       const inlineLens = hostPage.getByTestId("real-ai-lens-A");
       await expect(inlineLens).toBeVisible();
       const beforeLensBox = await inlineLens.boundingBox();
-      const candidateFrame = hostPage.getByTestId("real-ai-candidate-A-frame");
-      const frameBox = await candidateFrame.boundingBox();
       expect(beforeLensBox).not.toBeNull();
-      expect(frameBox).not.toBeNull();
 
       await candidateFrame.dispatchEvent("pointerdown", {
         bubbles: true,
@@ -403,9 +527,9 @@ test.describe("public beta UX readiness", () => {
       const afterLensBox = await inlineLens.boundingBox();
       expect(afterLensBox).not.toBeNull();
       expect(Math.round(afterLensBox!.x)).not.toBe(Math.round(beforeLensBox!.x));
-      await hostPage.getByRole("button", { name: "후보 A 확대 도구" }).click();
+      await magnifierButton.click();
 
-      await hostPage.getByRole("button", { name: "후보 A 확대 보기" }).click();
+      await zoomButton.click();
       const dialog = hostPage.getByRole("dialog");
       await expect(dialog).toBeVisible();
       await expect(dialog).toContainText("후보 A 확대 보기");
@@ -413,10 +537,302 @@ test.describe("public beta UX readiness", () => {
       const box = await dialog.boundingBox();
       expect(box).not.toBeNull();
       expect(box?.x).toBeGreaterThanOrEqual(0);
-      expect(box?.width).toBeLessThanOrEqual(390);
+      expect(box?.y).toBeGreaterThanOrEqual(0);
+      expect(box?.width).toBeLessThanOrEqual(mobileViewport.width);
+      expect(box?.height).toBeLessThanOrEqual(mobileViewport.height);
+      const zoomCloseBox = await hostPage.getByTestId("real-ai-zoom-close").boundingBox();
+      expect(zoomCloseBox).not.toBeNull();
+      expect(zoomCloseBox!.x).toBeGreaterThanOrEqual(0);
+      expect(zoomCloseBox!.y).toBeGreaterThanOrEqual(0);
+      expect(zoomCloseBox!.x + zoomCloseBox!.width).toBeLessThanOrEqual(
+        mobileViewport.width,
+      );
+      expect(zoomCloseBox!.y + zoomCloseBox!.height).toBeLessThanOrEqual(
+        mobileViewport.height,
+      );
+      expect(zoomCloseBox!.width).toBeGreaterThanOrEqual(44);
+      expect(zoomCloseBox!.height).toBeGreaterThanOrEqual(44);
 
       await hostPage.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
+
+      await hostPage.getByTestId("real-ai-candidate-B").scrollIntoViewIfNeeded();
+      await expect(hostPage.getByTestId("real-ai-candidate-B")).toBeInViewport();
+
+      await hostPage.getByTestId("real-ai-skip-round").click();
+      await expect(hostPage.getByTestId("real-ai-round-result")).toBeVisible({
+        timeout: 6000,
+      });
+      await expect(guestPage.getByTestId("real-ai-round-result")).toBeVisible({
+        timeout: 6000,
+      });
+    } finally {
+      await Promise.all([hostContext.close(), guestContext.close()]);
+    }
+  });
+
+  test("keeps Real or AI photos generous on standard mobile viewports", async ({
+    browser,
+  }) => {
+    for (const mobileViewport of [
+      { height: 844, width: 390 },
+      { height: 915, width: 412 },
+    ]) {
+      const hostContext = await browser.newContext({
+        isMobile: true,
+        viewport: mobileViewport,
+      });
+      const hostPage = await hostContext.newPage();
+      const guestContext = await browser.newContext({
+        isMobile: true,
+        viewport: mobileViewport,
+      });
+      const guestPage = await guestContext.newPage();
+
+      try {
+        await hostPage.goto("/games/real-or-ai");
+        await waitForRealtimeReady(hostPage);
+        await hostPage.locator("#real-ai-create-nickname").fill(
+          `standard-host-${mobileViewport.width}`,
+        );
+        await hostPage
+          .locator('form:has(#real-ai-create-nickname) button[type="submit"]')
+          .click();
+        await expect(hostPage.locator("#real-ai-countdown-select")).toBeVisible();
+
+        const roomCode = extractRealOrAiRoomCode(await hostPage.locator("body").innerText());
+
+        await guestPage.goto(`/games/real-or-ai/join?roomCode=${roomCode}`);
+        await waitForRealtimeReady(guestPage);
+        await guestPage.locator("#real-ai-join-nickname").fill(
+          `standard-guest-${mobileViewport.width}`,
+        );
+        await guestPage
+          .locator('form:has(#real-ai-join-nickname) button[type="submit"]')
+          .click();
+
+        await hostPage.locator("#real-ai-countdown-select").selectOption("3");
+        await hostPage.getByTestId("real-ai-start-game").click();
+        await expect(guestPage.getByTestId("real-ai-candidate-A")).toBeVisible({
+          timeout: 6000,
+        });
+
+        await expect(guestPage.locator("body")).not.toContainText("방 코드");
+        await expect(guestPage.locator("body")).not.toContainText(roomCode);
+        await expect(guestPage.locator("body")).not.toContainText("방에 입장했습니다.");
+        await expect(guestPage.locator("body")).not.toContainText("허브로");
+        await expect(guestPage.locator("body")).not.toContainText("서버 연결");
+        await expect(guestPage.locator("body")).not.toContainText("게임 설정");
+        await expect(guestPage.locator("body")).not.toContainText("운영 패널");
+        await expect(guestPage.locator("body")).not.toContainText("QR 입장");
+
+        const frameABox = await guestPage.getByTestId("real-ai-candidate-A-frame").boundingBox();
+        const frameBBox = await guestPage.getByTestId("real-ai-candidate-B-frame").boundingBox();
+        const candidateBBox = await guestPage.getByTestId("real-ai-candidate-B").boundingBox();
+        const submitBarBox = await guestPage.getByTestId("real-ai-submit-bar").boundingBox();
+        const submitButton = guestPage.getByTestId("real-ai-submit-answer");
+        const initialSubmitButtonBox = await submitButton.boundingBox();
+        expect(frameABox).not.toBeNull();
+        expect(frameBBox).not.toBeNull();
+        expect(candidateBBox).not.toBeNull();
+        expect(submitBarBox).not.toBeNull();
+        expect(initialSubmitButtonBox).not.toBeNull();
+        expect(frameABox!.width).toBeGreaterThanOrEqual(mobileViewport.width - 40);
+        expect(frameABox!.height).toBeGreaterThanOrEqual(230);
+        expect(candidateBBox!.y).toBeLessThan(mobileViewport.height);
+        expect(submitBarBox!.y + submitBarBox!.height).toBeLessThanOrEqual(
+          mobileViewport.height,
+        );
+        expect(boxesOverlap(frameBBox!, submitBarBox!)).toBe(false);
+
+        await guestPage.getByRole("button", { name: "후보 A 선택" }).click();
+        const selectedSubmitButtonBox = await submitButton.boundingBox();
+        await submitButton.click();
+        await expect(guestPage.getByTestId("real-ai-submit-bar")).toContainText(
+          "제출 완료 · 후보 A",
+        );
+        await expect(submitButton).toHaveText("제출 완료");
+        const submittedButtonBox = await submitButton.boundingBox();
+        expect(selectedSubmitButtonBox).not.toBeNull();
+        expect(submittedButtonBox).not.toBeNull();
+        expect(selectedSubmitButtonBox!.x).toBe(submittedButtonBox!.x);
+        expect(selectedSubmitButtonBox!.width).toBe(submittedButtonBox!.width);
+      } finally {
+        await Promise.all([hostContext.close(), guestContext.close()]);
+      }
+    }
+  });
+
+  test("keeps the Real or AI submit action visible on a very short mobile viewport", async ({
+    browser,
+  }) => {
+    const mobileViewport = {
+      height: 640,
+      width: 360,
+    };
+    const hostContext = await browser.newContext({
+      isMobile: true,
+      viewport: mobileViewport,
+    });
+    const hostPage = await hostContext.newPage();
+    const guestContext = await browser.newContext({
+      isMobile: true,
+      viewport: mobileViewport,
+    });
+    const guestPage = await guestContext.newPage();
+
+    try {
+      await hostPage.goto("/games/real-or-ai");
+      await waitForRealtimeReady(hostPage);
+      await hostPage.locator("#real-ai-create-nickname").fill("short-host");
+      await hostPage
+        .locator('form:has(#real-ai-create-nickname) button[type="submit"]')
+        .click();
+      await expect(hostPage.locator("#real-ai-countdown-select")).toBeVisible();
+
+      const roomCode = extractRealOrAiRoomCode(await hostPage.locator("body").innerText());
+
+      await guestPage.goto(`/games/real-or-ai/join?roomCode=${roomCode}`);
+      await waitForRealtimeReady(guestPage);
+      await guestPage.locator("#real-ai-join-nickname").fill("short-guest");
+      await guestPage
+        .locator('form:has(#real-ai-join-nickname) button[type="submit"]')
+        .click();
+
+      await hostPage.locator("#real-ai-countdown-select").selectOption("3");
+      await expect(hostPage.getByTestId("real-ai-start-game")).toBeEnabled();
+      await hostPage.getByTestId("real-ai-start-game").click();
+      await expect(guestPage.getByTestId("real-ai-candidate-A")).toBeVisible({
+        timeout: 6000,
+      });
+
+      await expect(guestPage.locator("body")).not.toContainText(roomCode);
+
+      const cardA = guestPage.getByTestId("real-ai-candidate-A");
+      const frameABox = await guestPage.getByTestId("real-ai-candidate-A-frame").boundingBox();
+      const frameBBox = await guestPage.getByTestId("real-ai-candidate-B-frame").boundingBox();
+      const candidateBBox = await guestPage.getByTestId("real-ai-candidate-B").boundingBox();
+      const submitBarBox = await guestPage.getByTestId("real-ai-submit-bar").boundingBox();
+      const submitButton = guestPage.getByTestId("real-ai-submit-answer");
+      const submitButtonBox = await submitButton.boundingBox();
+      const magnifierButtonBox = await cardA.locator("button").nth(1).boundingBox();
+      const zoomButtonBox = await cardA.locator("button").nth(2).boundingBox();
+      const leaveButtonBox = await guestPage.getByTestId("real-ai-leave-round").boundingBox();
+
+      expect(frameABox).not.toBeNull();
+      expect(frameBBox).not.toBeNull();
+      expect(candidateBBox).not.toBeNull();
+      expect(submitBarBox).not.toBeNull();
+      expect(submitButtonBox).not.toBeNull();
+      expect(magnifierButtonBox).not.toBeNull();
+      expect(zoomButtonBox).not.toBeNull();
+      expect(leaveButtonBox).not.toBeNull();
+      await expect(submitButton).toBeDisabled();
+      expect(frameABox!.width).toBeGreaterThanOrEqual(mobileViewport.width - 40);
+      expect(frameABox!.height).toBeGreaterThanOrEqual(156);
+      expect(candidateBBox!.y).toBeLessThan(mobileViewport.height);
+      expect(frameBBox!.y).toBeLessThan(mobileViewport.height);
+      expect(submitBarBox!.y + submitBarBox!.height).toBeLessThanOrEqual(
+        mobileViewport.height - 12,
+      );
+      expect(submitButtonBox!.width).toBeGreaterThanOrEqual(96);
+      expect(submitButtonBox!.height).toBeGreaterThanOrEqual(44);
+      expect(leaveButtonBox!.y).toBeGreaterThanOrEqual(0);
+      expect(boxesOverlap(frameABox!, magnifierButtonBox!)).toBe(false);
+      expect(boxesOverlap(frameABox!, zoomButtonBox!)).toBe(false);
+      expect(boxesOverlap(frameBBox!, submitBarBox!)).toBe(false);
+      await expect(guestPage.getByTestId("real-ai-submit-bar")).toContainText(
+        "후보 선택 후 제출",
+      );
+
+      await guestPage.getByRole("button", { name: "후보 A 선택" }).click();
+      await expect(guestPage.getByTestId("real-ai-submit-bar")).toContainText(
+        "후보 A 선택 · 제출",
+      );
+      await expect(submitButton).toBeEnabled();
+
+      await submitButton.click();
+      await expect(guestPage.getByTestId("real-ai-submit-bar")).toContainText(
+        "제출 완료 · 후보 A",
+      );
+      await expect(submitButton).toHaveText("제출 완료");
+      await expect(submitButton).toBeDisabled();
+      const submittedButtonBox = await submitButton.boundingBox();
+      expect(submittedButtonBox).not.toBeNull();
+      expect(submittedButtonBox!.width).toBeGreaterThanOrEqual(112);
+      expect(submittedButtonBox!.height).toBeGreaterThanOrEqual(44);
+    } finally {
+      await Promise.all([hostContext.close(), guestContext.close()]);
+    }
+  });
+
+  test("returns scrolled mobile players to the Real or AI round surface when play starts", async ({
+    browser,
+  }) => {
+    const mobileViewport = {
+      height: 800,
+      width: 360,
+    };
+    const hostContext = await browser.newContext({
+      isMobile: true,
+      viewport: mobileViewport,
+    });
+    const hostPage = await hostContext.newPage();
+    const guestContext = await browser.newContext({
+      isMobile: true,
+      viewport: mobileViewport,
+    });
+    const guestPage = await guestContext.newPage();
+
+    try {
+      await hostPage.goto("/games/real-or-ai");
+      await waitForRealtimeReady(hostPage);
+      await hostPage.locator("#real-ai-create-nickname").fill("scroll-host");
+      await hostPage
+        .locator('form:has(#real-ai-create-nickname) button[type="submit"]')
+        .click();
+      await expect(hostPage.locator("#real-ai-countdown-select")).toBeVisible();
+
+      const roomCode = extractRealOrAiRoomCode(await hostPage.locator("body").innerText());
+
+      await guestPage.goto(`/games/real-or-ai/join?roomCode=${roomCode}`);
+      await waitForRealtimeReady(guestPage);
+      await guestPage.locator("#real-ai-join-nickname").fill("scroll-guest");
+      await guestPage
+        .locator('form:has(#real-ai-join-nickname) button[type="submit"]')
+        .click();
+
+      await hostPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await guestPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      expect(await hostPage.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+      expect(await guestPage.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+      await hostPage.locator("#real-ai-countdown-select").selectOption("3");
+      await hostPage.getByTestId("real-ai-start-game").click();
+      await Promise.all([
+        hostPage.getByTestId("real-ai-candidate-A").waitFor({
+          state: "visible",
+          timeout: 6000,
+        }),
+        guestPage.getByTestId("real-ai-candidate-A").waitFor({
+          state: "visible",
+          timeout: 6000,
+        }),
+      ]);
+
+      const hostAnchorBox = await hostPage.getByTestId("real-ai-active-round-anchor").boundingBox();
+      const guestAnchorBox = await guestPage
+        .getByTestId("real-ai-active-round-anchor")
+        .boundingBox();
+      const guestSubmitBarBox = await guestPage.getByTestId("real-ai-submit-bar").boundingBox();
+      expect(hostAnchorBox).not.toBeNull();
+      expect(guestAnchorBox).not.toBeNull();
+      expect(guestSubmitBarBox).not.toBeNull();
+      expect(hostAnchorBox!.y).toBeLessThanOrEqual(16);
+      expect(guestAnchorBox!.y).toBeLessThanOrEqual(16);
+      expect(guestSubmitBarBox!.y + guestSubmitBarBox!.height).toBeLessThanOrEqual(
+        mobileViewport.height,
+      );
     } finally {
       await Promise.all([hostContext.close(), guestContext.close()]);
     }
