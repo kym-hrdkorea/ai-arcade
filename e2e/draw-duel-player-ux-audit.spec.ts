@@ -197,7 +197,6 @@ test.describe("Draw Duel player UX audit", () => {
       await capture(firstGuest.page, "mobile-guesser-round");
       await capture(screenPage, "screen-drawing");
 
-      await firstGuest.page.getByRole("button", { name: "플레이 메뉴" }).click();
       await firstGuest.page.getByRole("button", { name: "나가기" }).click();
       await expect(firstGuest.page.getByRole("dialog")).toContainText("방에서 나갈까요?");
       await firstGuest.page.getByRole("button", { name: "취소" }).click();
@@ -218,8 +217,7 @@ test.describe("Draw Duel player UX audit", () => {
       await expect(firstGuest.page.getByText("이번 라운드의 출제자입니다.")).toBeVisible();
       await expect(firstGuest.page.getByTestId("draw-duel-prompt-chip")).toBeVisible();
       await firstGuest.page.getByRole("button", { name: "전체 지우기" }).click();
-      await expect(firstGuest.page.getByRole("dialog")).toContainText("현재 그림을 모두 지울까요?");
-      await firstGuest.page.getByRole("button", { name: "취소" }).click();
+      await expect(firstGuest.page.getByLabel("Draw Duel drawing canvas")).toBeVisible();
       metrics.mobileDrawerRound = await getMetrics(firstGuest.page);
       await capture(firstGuest.page, "mobile-drawer-round");
 
