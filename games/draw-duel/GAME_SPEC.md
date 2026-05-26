@@ -19,7 +19,8 @@
 ```txt
 최소 인원: 2명
 권장 인원: 4~8명
-최대 인원: 100명
+표시 인원: 120명
+최대 참여 제한: 없음
 운영 방식: 방 단위 진행
 예상 시간: 5~10분
 ```
@@ -242,7 +243,7 @@ draw-duel:game-result
 - 클라이언트 로컬 QR 생성
 - 호스트 전용 운영 패널
 - 60초 disconnect grace period
-- Socket.IO 100 clients/10 rooms 가정 부하 스모크
+- Socket.IO 120 clients/1 room 가정 부하 스모크
 
 제외:
 
@@ -252,7 +253,7 @@ draw-duel:game-result
 - OAuth/관리자 계정
 - Redis adapter
 - 운영자 대시보드
-- 실제 100명 운영 보장
+- 실제 120명 운영 보장
 
 ## 15. Phase 7 실제 AI 그림 추측 전환
 

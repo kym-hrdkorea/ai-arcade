@@ -45,6 +45,7 @@ type SmokeStats = {
   roomsStarted: number;
 };
 
+const latencySamples: Record<string, number[]> = {};
 const targetUrl =
   getCliValue("url") ?? process.env.LOAD_SMOKE_URL ?? "http://127.0.0.1:4000";
 const smokeGame = parseSmokeGame(
@@ -70,7 +71,10 @@ const eventTimeoutMs = parsePositiveInteger(
   getCliValue("event-timeout-ms") ?? process.env.LOAD_SMOKE_EVENT_TIMEOUT_MS,
   15_000,
 );
-const maxRealOrAiPlayersPerRoom = 100;
+const maxPlayersPerRoom = parsePositiveInteger(
+  getCliValue("max-players-per-room") ?? process.env.LOAD_SMOKE_MAX_PLAYERS_PER_ROOM,
+  Number.MAX_SAFE_INTEGER,
+);
 
 function getCliValue(name: string) {
   const prefix = `--${name}=`;
@@ -96,8 +100,29 @@ function parsePositiveInteger(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function recordLatency(label: string, startedAt: number) {
+  const samples = latencySamples[label] ?? [];
+  samples.push(Date.now() - startedAt);
+  latencySamples[label] = samples;
+}
+
+function percentile(values: number[], percentileValue: number) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const sorted = [...values].sort((first, second) => first - second);
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((percentileValue / 100) * sorted.length) - 1),
+  );
+
+  return sorted[index] ?? 0;
+}
+
 function createSocket(index: number) {
   return new Promise<LoadSocket>((resolve, reject) => {
+    const startedAt = Date.now();
     const socket: LoadSocket = io(targetUrl, {
       reconnection: false,
       timeout: connectTimeoutMs,
@@ -110,6 +135,7 @@ function createSocket(index: number) {
 
     socket.once("connect", () => {
       clearTimeout(timer);
+      recordLatency("socket:connect", startedAt);
       resolve(socket);
     });
     socket.once("connect_error", (error) => {
@@ -122,12 +148,14 @@ function createSocket(index: number) {
 
 function waitForAck<T>(emit: (ack: EventAck<T>) => void, label: string) {
   return new Promise<T>((resolve, reject) => {
+    const startedAt = Date.now();
     const timer = setTimeout(() => {
       reject(new Error(`${label} ack timeout`));
     }, ackTimeoutMs);
 
     emit((response: EventResponse<T>) => {
       clearTimeout(timer);
+      recordLatency(label, startedAt);
 
       if (!response.ok) {
         reject(new Error(`${label} failed: ${response.error.code}`));
@@ -431,7 +459,7 @@ async function runDrawDuelSmoke(sockets: LoadSocket[], stats: SmokeStats, errors
     const socket = guestSockets[index];
     const room = rooms[index % rooms.length];
 
-    if (!socket || !room || room.players.length >= 10) {
+    if (!socket || !room || room.players.length >= maxPlayersPerRoom) {
       continue;
     }
 
@@ -474,7 +502,7 @@ async function runDrawDuelSmoke(sockets: LoadSocket[], stats: SmokeStats, errors
 
     const guessers = room.players
       .filter((player) => player.playerId !== roundState.round.drawerPlayerId)
-      .slice(0, 3);
+      .slice(0, maxPlayersPerRoom);
 
     await Promise.all(
       guessers.map((player, guessIndex) =>
@@ -533,10 +561,10 @@ async function runRealOrAiSmoke(sockets: LoadSocket[], stats: SmokeStats, errors
     }
 
     const room =
-      rooms.find((candidate) => candidate.players.length < maxRealOrAiPlayersPerRoom) ??
+      rooms.find((candidate) => candidate.players.length < maxPlayersPerRoom) ??
       rooms[index % rooms.length];
 
-    if (!room || room.players.length >= maxRealOrAiPlayersPerRoom) {
+    if (!room || room.players.length >= maxPlayersPerRoom) {
       continue;
     }
 
@@ -609,6 +637,14 @@ function printSummary(startedAt: number, stats: SmokeStats, errors: string[]) {
     `Event errors: ${stats.eventErrors}`,
     `Elapsed: ${elapsedMs}ms`,
   ];
+
+  for (const [label, samples] of Object.entries(latencySamples).sort(([first], [second]) =>
+    first.localeCompare(second),
+  )) {
+    summary.push(
+      `${label} latency ms: count=${samples.length} p50=${percentile(samples, 50)} p95=${percentile(samples, 95)} max=${Math.max(...samples)}`,
+    );
+  }
 
   console.info(summary.join("\n"));
 

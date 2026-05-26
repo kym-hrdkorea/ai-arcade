@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RealOrAiRoundResultPayload } from "@ai-arcade/shared";
 
 import {
+  applyRoundResultViewTransition,
   calculateContainedImageRect,
   createCandidateViewModels,
   formatResponseTime,
@@ -114,6 +115,26 @@ describe("Real or AI play surface helpers", () => {
     });
     expect(getRoundEntryForPlayer(result, "missing")).toBeUndefined();
     expect(getTopScorerSummary(result)).toBe("민수 · 141점");
+  });
+
+  it("keeps result view transitions scoped to the active round", () => {
+    const result = createRoundResult();
+
+    expect(applyRoundResultViewTransition(result, "answer", {
+      roomCode: result.roomCode,
+      roundId: result.roundId,
+      view: "score",
+    })).toBe("score");
+    expect(applyRoundResultViewTransition(result, "answer", {
+      roomCode: result.roomCode,
+      roundId: "00000000-0000-4000-8000-000000000099",
+      view: "score",
+    })).toBe("answer");
+    expect(applyRoundResultViewTransition(null, "answer", {
+      roomCode: result.roomCode,
+      roundId: result.roundId,
+      view: "score",
+    })).toBe("answer");
   });
 
   it("formats response times for result rows", () => {

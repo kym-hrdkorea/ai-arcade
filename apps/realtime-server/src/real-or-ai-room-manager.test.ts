@@ -124,20 +124,20 @@ describe("RealOrAiRoomManager", () => {
     expect(created.room.gameId).toBe("real-or-ai");
     expect(created.room.playableRoundCount).toBe(12);
     expect(created.room.settings).toEqual(DEFAULT_REAL_OR_AI_SETTINGS);
-    expect(created.room.maxPlayers).toBe(100);
+    expect(created.room.maxPlayers).toBe(120);
   });
 
-  it("limits rooms to 100 connected players", () => {
+  it("allows players over the displayed room capacity", () => {
     const manager = createManager();
     const host = createRoom(manager);
+    let latest = host.room;
 
-    for (let index = 1; index < 100; index += 1) {
-      joinPlayer(manager, host.room.roomCode, index);
+    for (let index = 1; index <= latest.maxPlayers + 5; index += 1) {
+      latest = joinPlayer(manager, host.room.roomCode, index).room;
     }
 
-    expect(() => joinPlayer(manager, host.room.roomCode, 100)).toThrow(
-      RealOrAiRoomError,
-    );
+    expect(latest.maxPlayers).toBe(120);
+    expect(latest.players).toHaveLength(latest.maxPlayers + 6);
   });
 
   it("allows only the host to update settings while waiting", () => {
@@ -434,7 +434,15 @@ describe("RealOrAiRoomManager", () => {
     });
     startGame(manager, host.room.roomCode);
     startAnsweringRound(manager, host.room.roomCode);
-    manager.finishRound(host.room.roomCode, "time-up");
+    const firstResult = manager.finishRound(host.room.roomCode, "time-up");
+    manager.setResultView(
+      {
+        roomCode: host.room.roomCode,
+        roundId: firstResult.roundId,
+        view: "score",
+      },
+      hostSocketId,
+    );
 
     const nextRound = manager.nextRound(
       {
@@ -452,7 +460,15 @@ describe("RealOrAiRoomManager", () => {
 
     const secondRound = startAnsweringRound(manager, host.room.roomCode);
     expect(secondRound.round.roundNumber).toBe(2);
-    manager.finishRound(host.room.roomCode, "time-up");
+    const secondResult = manager.finishRound(host.room.roomCode, "time-up");
+    manager.setResultView(
+      {
+        roomCode: host.room.roomCode,
+        roundId: secondResult.roundId,
+        view: "score",
+      },
+      hostSocketId,
+    );
     const finalResult = manager.nextRound(
       {
         roomCode: host.room.roomCode,
@@ -466,6 +482,84 @@ describe("RealOrAiRoomManager", () => {
       expect(finalResult.room.status).toBe("final-result");
       expect(finalResult.gameResult.results).toHaveLength(2);
     }
+  });
+
+  it("requires the host score view before advancing round results", () => {
+    const manager = createManager(1);
+    const host = createRoom(manager);
+    joinPlayer(manager, host.room.roomCode, 1);
+    startGame(manager, host.room.roomCode);
+    startAnsweringRound(manager, host.room.roomCode);
+
+    expect(() =>
+      manager.setResultView(
+        {
+          roomCode: host.room.roomCode,
+          roundId: "11111111-1111-4111-8111-111111111111",
+          view: "score",
+        },
+        hostSocketId,
+      ),
+    ).toThrow(RealOrAiRoomError);
+
+    const result = manager.finishRound(host.room.roomCode, "time-up");
+
+    expect(() =>
+      manager.nextRound(
+        {
+          roomCode: host.room.roomCode,
+        },
+        hostSocketId,
+      ),
+    ).toThrow(RealOrAiRoomError);
+
+    expect(() =>
+      manager.setResultView(
+        {
+          roomCode: host.room.roomCode,
+          roundId: result.roundId,
+          view: "score",
+        },
+        "socket-1",
+      ),
+    ).toThrow(RealOrAiRoomError);
+
+    const view = manager.setResultView(
+      {
+        roomCode: host.room.roomCode,
+        roundId: result.roundId,
+        view: "score",
+      },
+      hostSocketId,
+    );
+
+    expect(view.payload).toEqual({
+      roomCode: host.room.roomCode,
+      roundId: result.roundId,
+      view: "score",
+    });
+
+    manager.markDisconnected(hostSocketId);
+    const rejoined = manager.rejoinRoom(
+      {
+        playerId: host.currentPlayerId,
+        reconnectToken: host.reconnectToken,
+        roomCode: host.room.roomCode,
+      },
+      "socket-host-rejoin",
+    );
+
+    expect(rejoined.room.status).toBe("round-result");
+    expect(rejoined.room.currentRound?.resultView).toBe("score");
+    expect(rejoined.room.roundResult?.roundId).toBe(result.roundId);
+    expect(
+      manager.nextRound(
+        {
+          roomCode: host.room.roomCode,
+        },
+        "socket-host-rejoin",
+      ).kind,
+    ).toBe("game-result");
   });
 
   it("resets room progress while preserving room code and settings", () => {

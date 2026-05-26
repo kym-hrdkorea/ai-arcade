@@ -288,7 +288,7 @@ export class RoomManager {
       throw new RoomError("ROOM_NOT_WAITING", "이미 진행 중인 방입니다.");
     }
 
-    if (room.players.length >= room.maxPlayers) {
+    if (this.hasReachedAdmissionLimit(room)) {
       throw new RoomError("ROOM_FULL", "방이 가득 찼습니다.");
     }
 
@@ -1638,6 +1638,11 @@ export class RoomManager {
     };
   }
 
+  private hasReachedAdmissionLimit(_room: InternalRoom): boolean {
+    // maxPlayers is a display target, not an admission cap.
+    return false;
+  }
+
   private getConnectedPlayers(room: InternalRoom): InternalPlayer[] {
     return room.players.filter((player) => player.connectionStatus === "connected");
   }
@@ -1663,7 +1668,9 @@ export class RoomManager {
       return nickname;
     }
 
-    for (let index = 2; index <= ROOM_MAX_PLAYERS + 1; index += 1) {
+    const suffixSearchLimit = Math.max(existingNicknames.length + 2, ROOM_MAX_PLAYERS + 2);
+
+    for (let index = 2; index <= suffixSearchLimit; index += 1) {
       const suffix = String(index);
       const base = nickname.slice(0, Math.max(1, 12 - suffix.length));
       const candidate = `${base}${suffix}`;

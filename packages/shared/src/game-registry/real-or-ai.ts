@@ -7,7 +7,7 @@ export const realOrAiGame = {
   longDescription:
     "실제 사진과 AI 생성 사진을 나란히 보고 제한 시간 안에 진짜 사진을 고르는 실시간 퀴즈 게임입니다.",
   minPlayers: 2,
-  maxPlayers: 100,
+  maxPlayers: 120,
   estimatedMinutes: 5,
   thumbnail: "/games/real-or-ai-arcade.webp",
   route: "/games/real-or-ai",
@@ -19,7 +19,7 @@ export const realOrAiGame = {
       {
         title: "방 만들기와 설정",
         body: "호스트가 방을 열고 라운드 수와 보기 시간을 정하면 참가자는 방 코드나 QR로 입장합니다.",
-        items: ["최대 100명 참가", "보기 시간은 5/10/15/30/45/60초", "권장 45초, 빠른 진행 5초"],
+        items: ["표시 기준 120명", "보기 시간은 5/10/15/30/45/60초", "권장 45초, 빠른 진행 5초"],
       },
       {
         title: "진짜 사진 고르기",

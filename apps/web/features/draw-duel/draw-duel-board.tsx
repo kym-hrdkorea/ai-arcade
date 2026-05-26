@@ -204,7 +204,6 @@ export function DrawDuelBoard({
   const [width, setWidth] = useState(8);
   const [boardMessage, setBoardMessage] = useState<string | null>(null);
   const [isToolPaletteOpen, setIsToolPaletteOpen] = useState(false);
-  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
 
   const canUseTools = Boolean(socket && currentPlayerId && canDraw);
   const roleLabel = canUseTools
@@ -503,11 +502,7 @@ export function DrawDuelBoard({
     socket.emit("draw-duel:canvas-clear", payload, (response) => {
       if (!response.ok) {
         setBoardMessage(response.error.message);
-        setIsClearConfirmOpen(false);
-        return;
       }
-
-      setIsClearConfirmOpen(false);
     });
   }
 
@@ -580,7 +575,7 @@ export function DrawDuelBoard({
             <button
               aria-label="전체 지우기"
               className="arcade-button arcade-button-danger h-11 w-11 p-0"
-              onClick={() => setIsClearConfirmOpen(true)}
+              onClick={clearBoard}
               title="전체 지우기"
               type="button"
             >
@@ -696,7 +691,7 @@ export function DrawDuelBoard({
             <button
               aria-label="전체 지우기"
               className="arcade-button arcade-button-danger h-12 w-12 p-0"
-              onClick={() => setIsClearConfirmOpen(true)}
+              onClick={clearBoard}
               title="전체 지우기"
               type="button"
             >
@@ -744,32 +739,6 @@ export function DrawDuelBoard({
         </div>
       ) : null}
 
-      {isClearConfirmOpen ? (
-        <div
-          className="grid gap-3 border-2 border-joystick-red bg-console-black p-3"
-          role="dialog"
-        >
-          <p className="text-sm font-bold text-red-200">
-            현재 그림을 모두 지울까요?
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <button
-              className="arcade-button arcade-button-ghost"
-              onClick={() => setIsClearConfirmOpen(false)}
-              type="button"
-            >
-              취소
-            </button>
-            <button
-              className="arcade-button arcade-button-danger"
-              onClick={clearBoard}
-              type="button"
-            >
-              전체 지우기
-            </button>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }

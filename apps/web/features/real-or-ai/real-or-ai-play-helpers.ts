@@ -1,5 +1,7 @@
 import type {
   RealOrAiPublicImageCandidate,
+  RealOrAiResultView,
+  RealOrAiResultViewPayload,
   RealOrAiRoundResultEntry,
   RealOrAiRoundResultPayload,
 } from "@ai-arcade/shared";
@@ -245,4 +247,16 @@ export function getTopScorerSummary(result: RealOrAiRoundResultPayload): string 
   }
 
   return `${result.topScorers.map((entry) => entry.nickname).join(", ")} · ${topScore}점`;
+}
+
+export function applyRoundResultViewTransition(
+  result: RealOrAiRoundResultPayload | null,
+  currentView: RealOrAiResultView,
+  payload: RealOrAiResultViewPayload,
+): RealOrAiResultView {
+  if (!result || result.roomCode !== payload.roomCode || result.roundId !== payload.roundId) {
+    return currentView;
+  }
+
+  return payload.view;
 }

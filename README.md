@@ -19,7 +19,7 @@ Phase 7 공개 베타 플레이어 벤치마크 안정화 단계입니다.
 - Draw Duel Mock AI: 서버 내부 `AIGuesser` 경계, 라운드당 1회 Mock AI 추측, AI 점수판/최종 결과 표시
 - Draw Duel 운영 안정화: QR 입장, 호스트 전용 라운드 스킵/방 리셋, 같은 브라우저 재접속 복구, 끊김 상태 표시
 - Draw Duel 파일럿 준비: 호스트 전용 QR 운영 패널, 시작 전 게임 설정, Playwright E2E 시나리오
-- 부하 스모크: Draw Duel 100 clients/10 rooms, Real or AI 100 clients/1 room Socket.IO 시나리오 스크립트
+- 부하 스모크: Draw Duel 120 clients/1 room, Real or AI 120 clients/1 room Socket.IO 시나리오 스크립트
 
 ## 실행 방법
 
@@ -83,7 +83,7 @@ pnpm benchmark:load-smoke:draw-duel
 pnpm benchmark:load-smoke:real-or-ai
 ```
 
-이 결과는 100명 운영 보장이 아니라 로컬/행사 환경 점검용 스모크 결과로만 기록합니다.
+이 결과는 120명 운영 보장이 아니라 로컬/행사 환경 점검용 스모크 결과로만 기록합니다.
 
 ## 개발 원칙
 

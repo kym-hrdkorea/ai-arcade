@@ -244,7 +244,7 @@ export function DrawDuelLobby({
   const [copyNotice, setCopyNotice] = useState<string | null>(null);
   const [isQrPanelOpen, setIsQrPanelOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
+  const [isMobileOperationsOpen, setIsMobileOperationsOpen] = useState(false);
   const [pendingDangerAction, setPendingDangerAction] =
     useState<PendingDangerAction>(null);
 
@@ -413,6 +413,10 @@ export function DrawDuelLobby({
 
     socket.on("draw-duel:round-state", (payload) => {
       if (roundIdRef.current !== payload.round.roundId) {
+        if (roundIdRef.current) {
+          setStrokeHistory({ roomCode: payload.roomCode, strokes: [] });
+        }
+
         roundIdRef.current = payload.round.roundId;
         setWord(null);
         setTimer(null);
@@ -443,6 +447,10 @@ export function DrawDuelLobby({
 
     socket.on("draw-duel:stroke-history", (payload) => {
       setStrokeHistory(payload);
+    });
+
+    socket.on("draw-duel:canvas-clear", (payload) => {
+      setStrokeHistory({ roomCode: payload.roomCode, strokes: [] });
     });
 
     function appendGuessLog(payload: DrawDuelGuessLogPayload) {
@@ -597,8 +605,8 @@ export function DrawDuelLobby({
   }, [isHost]);
 
   useEffect(() => {
-    setIsPlayerMenuOpen(false);
-  }, [room?.status, currentRound?.roundId]);
+    setIsMobileOperationsOpen(false);
+  }, [currentRound?.roundId, isPlayingView]);
 
   function applyJoined(payload: RoomJoinedPayload, requestedNickname?: string) {
     saveStoredSession({
@@ -626,7 +634,6 @@ export function DrawDuelLobby({
     setCopyNotice(null);
     setIsQrPanelOpen(false);
     setIsQrModalOpen(false);
-    setIsPlayerMenuOpen(false);
     setPendingDangerAction(null);
     resetGameState();
   }
@@ -693,7 +700,6 @@ export function DrawDuelLobby({
       setCopyNotice(null);
       setIsQrPanelOpen(false);
       setIsQrModalOpen(false);
-      setIsPlayerMenuOpen(false);
       setPendingDangerAction(null);
       resetGameState();
       return;
@@ -713,7 +719,6 @@ export function DrawDuelLobby({
       setCopyNotice(null);
       setIsQrPanelOpen(false);
       setIsQrModalOpen(false);
-      setIsPlayerMenuOpen(false);
       setPendingDangerAction(null);
       resetGameState();
     });
@@ -1176,54 +1181,6 @@ export function DrawDuelLobby({
                     : "arcade-panel p-5 sm:p-6"
                 }
               >
-                {isPlayingView ? (
-                  <div className="grid gap-2 sm:hidden">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="arcade-badge arcade-badge-yellow min-h-9 px-3">
-                          방&nbsp;<span className="font-arcade">{room.roomCode}</span>
-                        </div>
-                        <p className="mt-1 truncate text-xs font-bold text-muted-gray">
-                          {currentPlayer?.nickname}
-                        </p>
-                      </div>
-                      <button
-                        aria-expanded={isPlayerMenuOpen}
-                        aria-label="플레이 메뉴"
-                        className="arcade-button arcade-button-ghost h-11 w-11 p-0"
-                        onClick={() => setIsPlayerMenuOpen((current) => !current)}
-                        type="button"
-                      >
-                        <Settings2 aria-hidden="true" size={18} />
-                      </button>
-                    </div>
-                    {isPlayerMenuOpen ? (
-                      <div className="grid gap-2 border border-line-gray bg-console-black p-2">
-                        <Link className="arcade-button arcade-button-ghost w-full" href="/">
-                          <ArrowLeft aria-hidden="true" size={18} />
-                          허브로
-                        </Link>
-                        <div className="arcade-badge arcade-badge-cyan min-h-11 justify-center px-4">
-                          {connectionStatus === "connected" ? (
-                            <PlugZap aria-hidden="true" size={16} />
-                          ) : (
-                            <Plug aria-hidden="true" size={16} />
-                          )}
-                          <span className="ml-2">{statusText(connectionStatus)}</span>
-                        </div>
-                        <button
-                          className="arcade-button arcade-button-danger w-full"
-                          onClick={() => setPendingDangerAction("leave")}
-                          type="button"
-                        >
-                          <LogOut aria-hidden="true" size={18} />
-                          나가기
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
                 <div
                   className={`flex flex-wrap items-start justify-between gap-3 sm:gap-4 ${
                     isMobileCompactRoomView ? "hidden sm:flex" : ""
@@ -1249,7 +1206,7 @@ export function DrawDuelLobby({
                 </div>
 
                 {isPlayingView ? (
-                  <div className="grid grid-cols-3 gap-2 border border-line-gray bg-console-black p-2 text-center text-xs font-black sm:hidden">
+                  <div className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2 border border-line-gray bg-console-black p-2 text-center text-xs font-black sm:hidden">
                     <div className="grid gap-1">
                       <span className="text-muted-gray">라운드</span>
                       <strong className="font-arcade text-coin-yellow">{mobileRoundLabel}</strong>
@@ -1264,6 +1221,15 @@ export function DrawDuelLobby({
                         {isDrawer ? "출제" : "정답"}
                       </strong>
                     </div>
+                    <button
+                      aria-label="나가기"
+                      className="arcade-button arcade-button-danger h-10 w-10 p-0"
+                      onClick={() => setPendingDangerAction("leave")}
+                      title="나가기"
+                      type="button"
+                    >
+                      <LogOut aria-hidden="true" size={16} />
+                    </button>
                   </div>
                 ) : null}
 
@@ -1337,111 +1303,135 @@ export function DrawDuelLobby({
                     ) : null}
 
                     {isHost ? (
-                      <div className="grid gap-4 border border-coin-yellow bg-console-black p-4">
-                        <h3 className="flex items-center gap-2 text-xl font-black">
+                      <div className="grid gap-3 border border-coin-yellow bg-console-black p-3 sm:gap-4 sm:p-4">
+                        <button
+                          aria-expanded={isMobileOperationsOpen}
+                          className={`${
+                            isPlayingView ? "flex" : "hidden"
+                          } min-h-11 items-center justify-between gap-3 text-left text-lg font-black sm:hidden`}
+                          onClick={() => setIsMobileOperationsOpen((current) => !current)}
+                          type="button"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Crown aria-hidden="true" className="text-coin-yellow" size={20} />
+                            운영 패널
+                          </span>
+                          {isMobileOperationsOpen ? (
+                            <ChevronUp aria-hidden="true" size={18} />
+                          ) : (
+                            <ChevronDown aria-hidden="true" size={18} />
+                          )}
+                        </button>
+                        <h3 className={`${isPlayingView ? "hidden sm:flex" : "flex"} items-center gap-2 text-xl font-black`}>
                           <Crown aria-hidden="true" className="text-coin-yellow" size={22} />
                           운영 패널
                         </h3>
-                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                          <button
-                            className="arcade-button arcade-button-secondary"
-                            disabled={!canSkipRound}
-                            onClick={skipRound}
-                            type="button"
-                          >
-                            <SkipForward aria-hidden="true" size={18} />
-                            라운드 스킵
-                          </button>
-                          <button
-                            className="arcade-button arcade-button-danger"
-                            onClick={() => setPendingDangerAction("reset")}
-                            type="button"
-                          >
-                            <RotateCcw aria-hidden="true" size={18} />
-                            방 리셋
-                          </button>
-                        </div>
+                        <div
+                          className={`${
+                            isPlayingView && !isMobileOperationsOpen ? "hidden sm:grid" : "grid"
+                          } gap-4`}
+                        >
+                          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                            <button
+                              className="arcade-button arcade-button-secondary"
+                              disabled={!canSkipRound}
+                              onClick={skipRound}
+                              type="button"
+                            >
+                              <SkipForward aria-hidden="true" size={18} />
+                              라운드 스킵
+                            </button>
+                            <button
+                              className="arcade-button arcade-button-danger"
+                              onClick={() => setPendingDangerAction("reset")}
+                              type="button"
+                            >
+                              <RotateCcw aria-hidden="true" size={18} />
+                              방 리셋
+                            </button>
+                          </div>
 
-                        <div className="grid gap-3 border border-line-gray bg-panel-gray p-3">
-                          <button
-                            className="arcade-button arcade-button-ghost w-full justify-between"
-                            disabled={!joinUrl}
-                            onClick={() => setIsQrPanelOpen((current) => !current)}
-                            type="button"
-                          >
-                            <span className="inline-flex items-center gap-2">
-                              <QrCode aria-hidden="true" size={18} />
-                              QR 입장
-                            </span>
+                          <div className="grid gap-3 border border-line-gray bg-panel-gray p-3">
+                            <button
+                              className="arcade-button arcade-button-ghost w-full justify-between"
+                              disabled={!joinUrl}
+                              onClick={() => setIsQrPanelOpen((current) => !current)}
+                              type="button"
+                            >
+                              <span className="inline-flex items-center gap-2">
+                                <QrCode aria-hidden="true" size={18} />
+                                QR 입장
+                              </span>
+                              {isQrPanelOpen ? (
+                                <ChevronUp aria-hidden="true" size={18} />
+                              ) : (
+                                <ChevronDown aria-hidden="true" size={18} />
+                              )}
+                            </button>
+
                             {isQrPanelOpen ? (
-                              <ChevronUp aria-hidden="true" size={18} />
-                            ) : (
-                              <ChevronDown aria-hidden="true" size={18} />
-                            )}
-                          </button>
-
-                          {isQrPanelOpen ? (
-                            <div className="grid gap-3 sm:grid-cols-[132px_minmax(0,1fr)] xl:grid-cols-1">
-                              <div className="flex h-32 w-32 items-center justify-center border-2 border-screen-white bg-screen-white p-2">
-                                {qrDataUrl ? (
-                                  <span
-                                    aria-label={`${room.roomCode} 방 참가 QR`}
-                                    className="h-full w-full"
-                                    role="img"
-                                    style={{
-                                      backgroundImage: `url("${qrDataUrl}")`,
-                                      backgroundPosition: "center",
-                                      backgroundRepeat: "no-repeat",
-                                      backgroundSize: "contain",
-                                    }}
-                                  />
-                                ) : (
-                                  <QrCode aria-hidden="true" className="text-console-black" size={54} />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-arcade text-xs text-electric-cyan">참가 링크</p>
-                                <p className="mt-2 break-all text-sm font-bold leading-6 text-screen-white">
-                                  {joinUrl}
-                                </p>
-                                <div className="mt-3 grid gap-2 text-xs font-bold leading-5 text-muted-gray">
-                                  <p className="break-all">
-                                    플레이 화면 <span className="text-screen-white">{playUrl}</span>
-                                  </p>
-                                  <p className="break-all">
-                                    대형 스크린 <span className="text-screen-white">{screenUrl}</span>
-                                  </p>
-                                  <p className="break-all">
-                                    운영 모니터 <span className="text-screen-white">{adminUrl}</span>
-                                  </p>
+                              <div className="grid gap-3 sm:grid-cols-[132px_minmax(0,1fr)] xl:grid-cols-1">
+                                <div className="flex h-32 w-32 items-center justify-center border-2 border-screen-white bg-screen-white p-2">
+                                  {qrDataUrl ? (
+                                    <span
+                                      aria-label={`${room.roomCode} 방 참가 QR`}
+                                      className="h-full w-full"
+                                      role="img"
+                                      style={{
+                                        backgroundImage: `url("${qrDataUrl}")`,
+                                        backgroundPosition: "center",
+                                        backgroundRepeat: "no-repeat",
+                                        backgroundSize: "contain",
+                                      }}
+                                    />
+                                  ) : (
+                                    <QrCode aria-hidden="true" className="text-console-black" size={54} />
+                                  )}
                                 </div>
-                                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                                  <button
-                                    className="arcade-button arcade-button-primary"
-                                    onClick={() => void copyJoinUrl()}
-                                    type="button"
-                                  >
-                                    <Clipboard aria-hidden="true" size={18} />
-                                    복사
-                                  </button>
-                                  <button
-                                    className="arcade-button arcade-button-secondary"
-                                    disabled={!qrDataUrl}
-                                    onClick={openQrModal}
-                                    ref={qrModalTriggerRef}
-                                    type="button"
-                                  >
-                                    <Maximize2 aria-hidden="true" size={18} />
-                                    크게 보기
-                                  </button>
+                                <div className="min-w-0">
+                                  <p className="font-arcade text-xs text-electric-cyan">참가 링크</p>
+                                  <p className="mt-2 break-all text-sm font-bold leading-6 text-screen-white">
+                                    {joinUrl}
+                                  </p>
+                                  <div className="mt-3 grid gap-2 text-xs font-bold leading-5 text-muted-gray">
+                                    <p className="break-all">
+                                      플레이 화면 <span className="text-screen-white">{playUrl}</span>
+                                    </p>
+                                    <p className="break-all">
+                                      대형 스크린 <span className="text-screen-white">{screenUrl}</span>
+                                    </p>
+                                    <p className="break-all">
+                                      운영 모니터 <span className="text-screen-white">{adminUrl}</span>
+                                    </p>
+                                  </div>
+                                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                                    <button
+                                      className="arcade-button arcade-button-primary"
+                                      onClick={() => void copyJoinUrl()}
+                                      type="button"
+                                    >
+                                      <Clipboard aria-hidden="true" size={18} />
+                                      복사
+                                    </button>
+                                    <button
+                                      className="arcade-button arcade-button-secondary"
+                                      disabled={!qrDataUrl}
+                                      onClick={openQrModal}
+                                      ref={qrModalTriggerRef}
+                                      type="button"
+                                    >
+                                      <Maximize2 aria-hidden="true" size={18} />
+                                      크게 보기
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            ) : null}
+                          </div>
+                          {copyNotice ? (
+                            <p className="text-sm font-bold text-muted-gray">{copyNotice}</p>
                           ) : null}
                         </div>
-                        {copyNotice ? (
-                          <p className="text-sm font-bold text-muted-gray">{copyNotice}</p>
-                        ) : null}
                       </div>
                     ) : null}
 

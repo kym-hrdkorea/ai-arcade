@@ -269,7 +269,7 @@ pnpm benchmark:load-smoke:all
 ```bash
 pnpm --filter @ai-arcade/shared build
 pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=draw-duel --clients=20 --rooms=4
-pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=real-or-ai --clients=100 --rooms=1
+pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=real-or-ai --clients=120 --rooms=1
 ```
 
 이 결과는 행사 전 위험 확인용이다. 100명 운영 가능성을 단정하는 근거로 쓰지 않는다.
@@ -524,8 +524,8 @@ pnpm benchmark:load-smoke:all
 
 기본 시나리오:
 
-- 100 clients
-- 10 rooms
+- 120 clients
+- 1 room
 - Draw Duel room당 최대 10명
 - 방 생성/참가/게임 시작
 - 일부 stroke/guess 이벤트 송신
@@ -533,11 +533,11 @@ pnpm benchmark:load-smoke:all
 Real or AI 시나리오:
 
 - `LOAD_SMOKE_GAME=real-or-ai`
-- 100 clients
+- 120 clients
 - 1 room
 - 방 생성/99명 참가/설정 1라운드/게임 시작
 - countdown 이후 후보 public payload 수신
-- 100명 answer submit
+- 120명 answer submit
 - round result 수신과 event error 확인
 
 기록 기준:
@@ -547,11 +547,40 @@ Real or AI 시나리오:
 - 서버 로그 예외 여부
 - 눈에 띄는 지연/타임아웃
 
-이 결과는 “100명 보장”이 아니라 “100명 가정 스모크 결과”로만 본다.
+이 결과는 “120명 보장”이 아니라 “120명 가정 스모크 결과”로만 본다.
 
 최근 로컬 기록:
 
 ```txt
+2026-05-26 로컬 스모크 - Draw Duel
+Command: pnpm benchmark:load-smoke:draw-duel
+Target: http://127.0.0.1:4000
+Requested clients: 120
+Requested rooms: 1
+Connected clients: 120
+Connection success rate: 100.0%
+Rooms created: 1
+Rooms started: 1
+Answer submissions: 119
+Event errors: 0
+Elapsed: 519ms
+draw-duel:guess-submit latency ms: p50=144 p95=282 max=294
+
+2026-05-26 로컬 스모크 - Real or AI
+Command: pnpm benchmark:load-smoke:real-or-ai
+Target: http://127.0.0.1:4000
+Requested clients: 120
+Requested rooms: 1
+Connected clients: 120
+Connection success rate: 100.0%
+Rooms created: 1
+Rooms started: 1
+Answer submissions: 120
+Event errors: 0
+Elapsed: 3463ms
+real-or-ai:answer-submit latency ms: p50=8 p95=13 max=14
+Note: 120명 운영 보장이 아니라 로컬 단일 프로세스 기준 스모크 결과로만 기록한다.
+
 2026-05-21 공개 베타 로컬 스모크 - Draw Duel
 Command: pnpm benchmark:load-smoke:draw-duel
 Target: http://127.0.0.1:4000

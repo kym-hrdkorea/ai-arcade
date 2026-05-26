@@ -256,6 +256,10 @@ export function DrawDuelRoomScreen({ mode, roomCode }: DrawDuelRoomScreenProps) 
 
     socket.on("draw-duel:round-state", (payload) => {
       if (roundIdRef.current !== payload.round.roundId) {
+        if (roundIdRef.current) {
+          setStrokeHistory({ roomCode: payload.roomCode, strokes: [] });
+        }
+
         roundIdRef.current = payload.round.roundId;
         setRoundResult(null);
         setResultSlide("ai-answer");
@@ -275,6 +279,10 @@ export function DrawDuelRoomScreen({ mode, roomCode }: DrawDuelRoomScreenProps) 
 
     socket.on("draw-duel:stroke-history", (payload) => {
       setStrokeHistory(payload);
+    });
+
+    socket.on("draw-duel:canvas-clear", (payload) => {
+      setStrokeHistory({ roomCode: payload.roomCode, strokes: [] });
     });
 
     socket.on("draw-duel:round-result", (payload) => {

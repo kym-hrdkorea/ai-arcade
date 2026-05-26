@@ -4,13 +4,16 @@ import type {
   RealOrAiAnswerAckPayload,
   RealOrAiAnswerCountPayload,
   RealOrAiGameResultPayload,
+  RealOrAiResultView,
   RealOrAiRoomState,
   RealOrAiRoundResultPayload,
   RealOrAiRoundState,
   RealOrAiTimerTickPayload,
 } from "@ai-arcade/shared";
 import {
+  BarChart3,
   CheckCircle2,
+  ListOrdered,
   LogOut,
   Maximize2,
   MousePointerClick,
@@ -58,9 +61,12 @@ type RealOrAiAnsweringPanelProps = {
 type RealOrAiRoundResultPanelProps = {
   currentPlayerId: string | null;
   isAdvancingRound: boolean;
+  isSettingResultView: boolean;
   isHost: boolean;
   onNextRound: () => void;
+  onShowScore: () => void;
   result: RealOrAiRoundResultPayload;
+  view: RealOrAiResultView;
 };
 
 type RealOrAiFinalResultPanelProps = {
@@ -576,24 +582,48 @@ function ImageZoomDialog({ onClose, viewModel }: ImageZoomDialogProps) {
 export function RealOrAiRoundResultPanel({
   currentPlayerId,
   isAdvancingRound,
+  isSettingResultView,
   isHost,
   onNextRound,
+  onShowScore,
   result,
+  view,
 }: RealOrAiRoundResultPanelProps) {
   const playerEntry = getRoundEntryForPlayer(result, currentPlayerId);
   const correctLabel = getCandidateLabelById(result.candidates, result.correctCandidateId);
   const selectedLabel = getCandidateLabelById(result.candidates, playerEntry?.selectedCandidateId);
   const isLastRound = result.roundNumber >= result.totalRounds;
+  const playerAnswerText = playerEntry
+    ? playerEntry.isCorrect
+      ? "정답"
+      : "오답"
+    : "미제출";
+  const rankedEntries = [...result.entries].sort((first, second) => {
+    if (second.pointsAwarded !== first.pointsAwarded) {
+      return second.pointsAwarded - first.pointsAwarded;
+    }
+
+    const firstTime = first.responseTimeMs ?? Number.POSITIVE_INFINITY;
+    const secondTime = second.responseTimeMs ?? Number.POSITIVE_INFINITY;
+
+    if (firstTime !== secondTime) {
+      return firstTime - secondTime;
+    }
+
+    return first.nickname.localeCompare(second.nickname, "ko");
+  });
 
   return (
     <section
-      className="mt-5 grid gap-5 border border-health-green bg-health-green/10 p-4"
+      className="grid gap-3 border border-health-green bg-health-green/10 p-2 sm:mt-5 sm:gap-5 sm:p-4"
       data-testid="real-ai-round-result"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="font-arcade text-xs text-health-green">라운드 결과</p>
-          <h3 className="mt-1 text-2xl font-black text-screen-white">
+          <p className="font-arcade text-xs text-health-green">
+            {view === "answer" ? "정답 공개" : "점수 정산"}
+          </p>
+          <h3 className="mt-1 text-xl font-black leading-tight text-screen-white sm:text-2xl">
             라운드 {result.roundNumber} / {result.totalRounds}
           </h3>
         </div>
@@ -602,109 +632,160 @@ export function RealOrAiRoundResultPanel({
         </span>
       </div>
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-2">
-        {result.candidates.map((candidate, index) => {
-          const label = index === 0 ? "A" : "B";
-          const isCorrect = candidate.id === result.correctCandidateId;
+      {view === "answer" ? (
+        <>
+          <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-4">
+            {result.candidates.map((candidate, index) => {
+              const label = index === 0 ? "A" : "B";
+              const isCorrect = candidate.id === result.correctCandidateId;
+              const isSelected = playerEntry?.selectedCandidateId === candidate.id;
 
-          return (
-            <article
-              className={`min-w-0 border-2 bg-console-black p-3 ${
-                isCorrect ? "border-health-green" : "border-line-gray"
-              }`}
-              key={candidate.id}
-            >
-              <div className="relative h-[clamp(16rem,36vh,30rem)] overflow-hidden border border-line-gray bg-panel-gray">
-                <Image
-                  alt={`결과 후보 ${label} 사진`}
-                  className="h-full w-full object-contain"
-                  height={candidate.height}
-                  onError={(event) => {
-                    event.currentTarget.style.display = "none";
-                  }}
-                  src={candidate.src}
-                  unoptimized
-                  width={candidate.width}
-                />
-                <span className="absolute left-3 top-3 border border-coin-yellow bg-console-black px-3 py-2 font-arcade text-xl text-coin-yellow">
-                  {label}
-                </span>
-                {isCorrect ? (
-                  <span className="absolute bottom-3 left-3 inline-flex items-center gap-2 border border-health-green bg-console-black px-3 py-2 text-sm font-black text-health-green">
-                    <CheckCircle2 aria-hidden="true" size={16} />
-                    정답
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                <strong className="text-screen-white">{sourceTypeLabel(candidate.sourceType)}</strong>
-                <span className="text-sm font-bold text-muted-gray">
-                  후보 {label}
-                </span>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+              return (
+                <article
+                  className={`min-w-0 border-2 bg-console-black p-1.5 sm:p-3 ${
+                    isCorrect ? "border-health-green" : "border-line-gray"
+                  }`}
+                  data-testid={`real-ai-result-candidate-${label}`}
+                  key={candidate.id}
+                >
+                  <div className="relative h-[clamp(132px,28svh,190px)] overflow-hidden border border-line-gray bg-panel-gray sm:h-[clamp(16rem,36vh,30rem)]">
+                    <Image
+                      alt={`결과 후보 ${label} 사진`}
+                      className="h-full w-full object-contain"
+                      height={candidate.height}
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                      src={candidate.src}
+                      unoptimized
+                      width={candidate.width}
+                    />
+                    <span className="absolute left-2 top-2 border border-coin-yellow bg-console-black px-2 py-1 font-arcade text-sm text-coin-yellow sm:left-3 sm:top-3 sm:px-3 sm:py-2 sm:text-xl">
+                      {label}
+                    </span>
+                    {isCorrect ? (
+                      <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 border border-health-green bg-console-black px-2 py-1 text-xs font-black text-health-green sm:bottom-3 sm:left-3 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm">
+                        <CheckCircle2 aria-hidden="true" size={14} />
+                        정답
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 grid gap-1 text-sm font-bold sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
+                    <strong className="text-screen-white">{sourceTypeLabel(candidate.sourceType)}</strong>
+                    <span className={isSelected ? "text-coin-yellow" : "text-muted-gray"}>
+                      {isSelected ? "내 선택" : `후보 ${label}`}
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="arcade-meter">
-          <strong>후보 {correctLabel}</strong>
-          <span>정답</span>
-        </div>
-        <div className="arcade-meter">
-          <strong>{playerEntry ? `후보 ${selectedLabel}` : "미제출"}</strong>
-          <span>내 선택</span>
-        </div>
-        <div className="arcade-meter">
-          <strong>{playerEntry?.pointsAwarded ?? 0}점</strong>
-          <span>{playerEntry?.isCorrect ? "정답" : "오답 또는 미제출"}</span>
-        </div>
-      </div>
-
-      <div className="grid gap-3 border border-line-gray bg-console-black p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="inline-flex items-center gap-2 font-black text-screen-white">
-            <Trophy aria-hidden="true" className="text-coin-yellow" size={18} />
-            최고 득점
-          </p>
-          <p className="text-sm font-bold text-coin-yellow">{getTopScorerSummary(result)}</p>
-        </div>
-        <div className="grid gap-2">
-          {result.entries.map((entry) => (
-            <div
-              className="grid gap-2 border border-line-gray bg-panel-gray px-3 py-2 text-sm font-bold sm:grid-cols-[1fr_auto_auto]"
-              key={entry.playerId}
-            >
-              <span className="truncate text-screen-white">
-                {entry.nickname}
-                {entry.playerId === currentPlayerId ? " (나)" : ""}
-              </span>
-              <span className={entry.isCorrect ? "text-health-green" : "text-muted-gray"}>
-                {entry.isCorrect ? "정답" : "오답"}
-              </span>
-              <span className="text-muted-gray">
-                {entry.pointsAwarded}점 · {formatResponseTime(entry.responseTimeMs)}
-              </span>
+          <div
+            className="grid grid-cols-3 gap-2 border border-line-gray bg-console-black p-2 sm:p-3"
+            data-testid="real-ai-answer-result-summary"
+          >
+            <div className="grid min-h-14 content-center border border-line-gray bg-panel-gray px-2 py-2">
+              <strong className="text-base leading-tight text-screen-white sm:text-lg">
+                후보 {correctLabel}
+              </strong>
+              <span className="mt-1 text-xs font-bold text-muted-gray sm:text-sm">정답</span>
             </div>
-          ))}
-        </div>
-      </div>
+            <div className="grid min-h-14 content-center border border-line-gray bg-panel-gray px-2 py-2">
+              <strong className="text-base leading-tight text-screen-white sm:text-lg">
+                {playerEntry ? `후보 ${selectedLabel}` : "미제출"}
+              </strong>
+              <span className="mt-1 text-xs font-bold text-muted-gray sm:text-sm">내 선택</span>
+            </div>
+            <div className="grid min-h-14 content-center border border-line-gray bg-panel-gray px-2 py-2">
+              <strong className="text-base leading-tight text-screen-white sm:text-lg">
+                {playerAnswerText}
+              </strong>
+              <span className="mt-1 text-xs font-bold text-muted-gray sm:text-sm">판정</span>
+            </div>
+          </div>
 
-      {isHost ? (
-        <button
-          className="arcade-button arcade-button-primary justify-self-start"
-          disabled={isAdvancingRound}
-          onClick={onNextRound}
-          type="button"
-        >
-          <Maximize2 aria-hidden="true" size={18} />
-          {isLastRound ? "최종 랭킹 보기" : "다음 라운드"}
-        </button>
+          {isHost ? (
+            <button
+              className="arcade-button arcade-button-primary min-h-12 justify-self-stretch sm:justify-self-start"
+              data-testid="real-ai-show-score"
+              disabled={isSettingResultView}
+              onClick={onShowScore}
+              type="button"
+            >
+              <BarChart3 aria-hidden="true" size={18} />
+              {isSettingResultView ? "점수 여는 중" : "점수 보기"}
+            </button>
+          ) : (
+            <p className="border border-line-gray bg-console-black p-3 text-sm font-bold text-muted-gray">
+              호스트가 점수 화면으로 넘기고 있습니다.
+            </p>
+          )}
+        </>
       ) : (
-        <p className="border border-line-gray bg-console-black p-3 text-sm font-bold text-muted-gray">
-          호스트가 다음 라운드를 준비하고 있습니다.
-        </p>
+        <>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="grid gap-2 border border-line-gray bg-console-black p-3">
+              <p className="inline-flex items-center gap-2 font-black text-screen-white">
+                <Trophy aria-hidden="true" className="text-coin-yellow" size={18} />
+                이번 라운드 최고 득점
+              </p>
+              <p className="text-sm font-bold text-coin-yellow">
+                {getTopScorerSummary(result)}
+              </p>
+            </div>
+            {isHost ? (
+              <button
+                className="arcade-button arcade-button-primary min-h-12 justify-self-stretch sm:justify-self-start"
+                disabled={isAdvancingRound}
+                onClick={onNextRound}
+                type="button"
+              >
+                {isLastRound ? (
+                  <Maximize2 aria-hidden="true" size={18} />
+                ) : (
+                  <ListOrdered aria-hidden="true" size={18} />
+                )}
+                {isLastRound ? "최종 랭킹 보기" : "다음 라운드"}
+              </button>
+            ) : (
+              <p className="border border-line-gray bg-console-black p-3 text-sm font-bold text-muted-gray">
+                호스트가 다음 진행을 준비하고 있습니다.
+              </p>
+            )}
+          </div>
+
+          <div className="grid gap-3 border border-line-gray bg-console-black p-3 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-black text-screen-white">현재 라운드 순위</p>
+              <p className="text-xs font-bold text-muted-gray">정답 후보 {correctLabel}</p>
+            </div>
+            <div className="grid gap-2" data-testid="real-ai-score-result-list">
+              {rankedEntries.map((entry, index) => (
+                <div
+                  className={`grid gap-2 border px-3 py-2 text-sm font-bold sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] ${
+                    entry.playerId === currentPlayerId
+                      ? "border-coin-yellow bg-coin-yellow/10"
+                      : "border-line-gray bg-panel-gray"
+                  }`}
+                  key={entry.playerId}
+                >
+                  <span className="font-arcade text-coin-yellow">#{index + 1}</span>
+                  <span className="truncate text-screen-white">
+                    {entry.nickname}
+                    {entry.playerId === currentPlayerId ? " (나)" : ""}
+                  </span>
+                  <span className={entry.isCorrect ? "text-health-green" : "text-muted-gray"}>
+                    {entry.isCorrect ? "정답" : "오답"}
+                  </span>
+                  <span className="text-muted-gray">
+                    {entry.pointsAwarded}점 · {formatResponseTime(entry.responseTimeMs)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </section>
   );
