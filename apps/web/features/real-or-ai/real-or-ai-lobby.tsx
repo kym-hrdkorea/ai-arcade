@@ -9,6 +9,7 @@ import type {
   RealOrAiCountdownPayload,
   RealOrAiCountdownSeconds,
   RealOrAiGameResultPayload,
+  RealOrAiResultView,
   RealOrAiRoomJoinedPayload,
   RealOrAiRoomState,
   RealOrAiRoundDurationSeconds,
@@ -50,6 +51,7 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
+import { applyRoundResultViewTransition } from "./real-or-ai-play-helpers";
 import {
   RealOrAiAnsweringPanel,
   RealOrAiFinalResultPanel,
@@ -133,6 +135,9 @@ function friendlyErrorMessage(error: { code: string; message: string }) {
     NOT_ENOUGH_ROUND_ITEMS: "사용 가능한 라운드 이미지가 부족합니다.",
     PLAYER_NOT_IN_ROOM: "방 입장 상태를 다시 확인해 주세요.",
     REJOIN_FAILED: "재접속에 실패했습니다. 방 코드로 다시 입장해 주세요.",
+    RESULT_SCORE_NOT_OPEN: "점수 화면을 먼저 열어 주세요.",
+    ROUND_MISMATCH: "현재 라운드 정보를 확인해 주세요.",
+    ROUND_RESULT_NOT_READY: "라운드 결과 화면에서만 진행할 수 있어요.",
     ROOM_FULL: "방이 가득 찼습니다.",
     ROOM_NOT_FOUND: "방을 찾을 수 없습니다.",
     ROOM_NOT_WAITING: "이미 진행 중인 방입니다.",
@@ -220,6 +225,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
   const qrModalCloseButtonRef = useRef<HTMLButtonElement>(null);
   const qrModalTriggerRef = useRef<HTMLButtonElement>(null);
   const previousQrFocusRef = useRef<HTMLElement | null>(null);
+  const roundResultRef = useRef<RealOrAiRoundResultPayload | null>(null);
 
   const [connectionStatus, setConnectionStatus] =
     useState<LobbyConnectionStatus>("connecting");
@@ -232,6 +238,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
   const [roundStart, setRoundStart] = useState<RealOrAiRoundStartPayload | null>(null);
   const [timer, setTimer] = useState<RealOrAiTimerTickPayload | null>(null);
   const [roundResult, setRoundResult] = useState<RealOrAiRoundResultPayload | null>(null);
+  const [roundResultView, setRoundResultView] = useState<RealOrAiResultView>("answer");
   const [gameResult, setGameResult] = useState<RealOrAiGameResultPayload | null>(null);
   const [answerCount, setAnswerCount] = useState<RealOrAiAnswerCountPayload | null>(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
@@ -239,6 +246,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     useState<RealOrAiAnswerAckPayload | null>(null);
   const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
   const [isAdvancingRound, setIsAdvancingRound] = useState(false);
+  const [isSettingResultView, setIsSettingResultView] = useState(false);
   const [isSkippingRound, setIsSkippingRound] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
@@ -316,6 +324,66 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
   }, [joinUrl]);
 
   useEffect(() => {
+    roundResultRef.current = roundResult;
+  }, [roundResult]);
+
+  const applyRoomSnapshot = useCallback((nextRoom: RealOrAiRoomState) => {
+    setRoom(nextRoom);
+    setIsSubmittingAnswer(false);
+    setIsAdvancingRound(false);
+    setIsSettingResultView(false);
+    setIsSkippingRound(false);
+
+    if (nextRoom.status === "round-result" && nextRoom.roundResult) {
+      setCountdown(null);
+      setTimer(null);
+      setAnswerCount(null);
+      setRoundStart(null);
+      setRoundResult(nextRoom.roundResult);
+      setRoundResultView(nextRoom.currentRound?.resultView ?? "answer");
+      setGameResult(null);
+      setSelectedCandidateId(null);
+      setSubmittedAnswer(null);
+      return;
+    }
+
+    if (nextRoom.status === "final-result" && nextRoom.gameResult) {
+      setCountdown(null);
+      setTimer(null);
+      setAnswerCount(null);
+      setRoundStart(null);
+      setRoundResult(null);
+      setRoundResultView("answer");
+      setGameResult(nextRoom.gameResult);
+      setSelectedCandidateId(null);
+      setSubmittedAnswer(null);
+      return;
+    }
+
+    if (nextRoom.status === "answering" && nextRoom.currentRound) {
+      setCountdown(null);
+      setRoundStart({
+        roomCode: nextRoom.roomCode,
+        round: nextRoom.currentRound,
+      });
+      setRoundResult(null);
+      setRoundResultView("answer");
+      setGameResult(null);
+      return;
+    }
+
+    setCountdown(null);
+    setTimer(null);
+    setAnswerCount(null);
+    setRoundStart(null);
+    setRoundResult(null);
+    setRoundResultView("answer");
+    setGameResult(null);
+    setSelectedCandidateId(null);
+    setSubmittedAnswer(null);
+  }, []);
+
+  useEffect(() => {
     if (room?.status !== "answering" || !roundStart?.round.roundId) {
       return;
     }
@@ -327,6 +395,19 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       });
     });
   }, [room?.status, roundStart?.round.roundId]);
+
+  useEffect(() => {
+    if (!roundResult?.roundId) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      activeRoundViewRef.current?.scrollIntoView({
+        block: "start",
+        behavior: "instant",
+      });
+    });
+  }, [roundResult?.roundId, roundResultView]);
 
   useEffect(() => {
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(realtimeUrl);
@@ -346,7 +427,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
         if (response.ok) {
           saveJoinedSession(response.data);
           setCurrentPlayerId(response.data.currentPlayerId);
-          setRoom(response.data.room);
+          applyRoomSnapshot(response.data.room);
           setJoinRoomCode(response.data.room.roomCode);
           setNoticeMessage("방에 다시 연결되었습니다.");
           return;
@@ -374,20 +455,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.on("real-or-ai:room-state", (payload) => {
-      setRoom(payload.room);
-
-      if (payload.room.status === "waiting") {
-        setCountdown(null);
-        setRoundStart(null);
-        setTimer(null);
-        setRoundResult(null);
-        setGameResult(null);
-        setAnswerCount(null);
-        setSelectedCandidateId(null);
-        setSubmittedAnswer(null);
-        setIsSubmittingAnswer(false);
-        setIsAdvancingRound(false);
-      }
+      applyRoomSnapshot(payload.room);
     });
 
     socket.on("real-or-ai:settings-updated", () => {
@@ -399,12 +467,14 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setRoundStart(null);
       setTimer(null);
       setRoundResult(null);
+      setRoundResultView("answer");
       setGameResult(null);
       setAnswerCount(null);
       setSelectedCandidateId(null);
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSettingResultView(false);
       setIsSkippingRound(false);
     });
 
@@ -412,11 +482,13 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setCountdown(null);
       setRoundStart(payload);
       setRoundResult(null);
+      setRoundResultView("answer");
       setAnswerCount(null);
       setSelectedCandidateId(null);
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSettingResultView(false);
       setIsSkippingRound(false);
     });
 
@@ -436,11 +508,20 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
 
     socket.on("real-or-ai:round-result", (payload) => {
       setRoundResult(payload);
+      setRoundResultView("answer");
       setCountdown(null);
       setTimer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSettingResultView(false);
       setIsSkippingRound(false);
+    });
+
+    socket.on("real-or-ai:result-view", (payload) => {
+      setRoundResultView((currentView) =>
+        applyRoundResultViewTransition(roundResultRef.current, currentView, payload),
+      );
+      setIsSettingResultView(false);
     });
 
     socket.on("real-or-ai:game-result", (payload) => {
@@ -448,11 +529,13 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setCountdown(null);
       setTimer(null);
       setRoundResult(null);
+      setRoundResultView("answer");
       setAnswerCount(null);
       setSelectedCandidateId(null);
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSettingResultView(false);
       setIsSkippingRound(false);
     });
 
@@ -466,7 +549,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [initialRoomCode]);
+  }, [applyRoomSnapshot, initialRoomCode]);
 
   const connectedPlayerCount =
     room?.players.filter((player) => player.connectionStatus === "connected").length ?? 0;
@@ -515,19 +598,8 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
 
     saveJoinedSession(response.data);
     setCurrentPlayerId(response.data.currentPlayerId);
-    setRoom(response.data.room);
+    applyRoomSnapshot(response.data.room);
     setJoinRoomCode(response.data.room.roomCode);
-    setCountdown(null);
-    setRoundStart(null);
-    setTimer(null);
-    setRoundResult(null);
-    setGameResult(null);
-    setAnswerCount(null);
-    setSelectedCandidateId(null);
-    setSubmittedAnswer(null);
-    setIsSubmittingAnswer(false);
-    setIsAdvancingRound(false);
-    setIsSkippingRound(false);
     setErrorMessage(null);
     setNoticeMessage("방에 입장했습니다.");
   }
@@ -589,12 +661,14 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setRoundStart(null);
       setTimer(null);
       setRoundResult(null);
+      setRoundResultView("answer");
       setGameResult(null);
       setAnswerCount(null);
       setSelectedCandidateId(null);
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSettingResultView(false);
       setIsSkippingRound(false);
       setNoticeMessage("방에서 나왔습니다.");
     });
@@ -680,10 +754,41 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     );
   }
 
+  function showScore() {
+    const socket = socketRef.current;
+
+    if (!socket || !room || !isHost || !roundResult || roundResultView !== "answer") {
+      return;
+    }
+
+    setIsSettingResultView(true);
+    socket.emit(
+      "real-or-ai:result-view-set",
+      {
+        roomCode: room.roomCode,
+        roundId: roundResult.roundId,
+        view: "score",
+      },
+      (response) => {
+        setIsSettingResultView(false);
+
+        if (!response.ok) {
+          setErrorMessage(friendlyErrorMessage(response.error));
+          return;
+        }
+
+        setRoundResultView((currentView) =>
+          applyRoundResultViewTransition(roundResult, currentView, response.data),
+        );
+        setErrorMessage(null);
+      },
+    );
+  }
+
   function nextRound() {
     const socket = socketRef.current;
 
-    if (!socket || !room || !isHost) {
+    if (!socket || !room || !isHost || roundResultView !== "score") {
       return;
     }
 
@@ -717,8 +822,10 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       }
 
       setRoundResult(response.data);
+      setRoundResultView("answer");
       setCountdown(null);
       setTimer(null);
+      setIsSettingResultView(false);
       setErrorMessage(null);
     });
   }
@@ -741,12 +848,14 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setRoundStart(null);
       setTimer(null);
       setRoundResult(null);
+      setRoundResultView("answer");
       setGameResult(null);
       setAnswerCount(null);
       setSelectedCandidateId(null);
       setSubmittedAnswer(null);
       setIsSubmittingAnswer(false);
       setIsAdvancingRound(false);
+      setIsSettingResultView(false);
       setIsSkippingRound(false);
       setNoticeMessage("방을 대기 상태로 되돌렸습니다.");
     });
@@ -793,8 +902,11 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       </div>
     </div>
   );
-  const isActiveRoundView = room?.status === "answering";
-  const isLiveGameView = room?.status === "answering" || room?.status === "countdown";
+  const isActiveRoundView = room?.status === "answering" || room?.status === "round-result";
+  const isLiveGameView =
+    room?.status === "answering" ||
+    room?.status === "countdown" ||
+    room?.status === "round-result";
   const shouldShowRoomIdentity = Boolean(room && !isLiveGameView);
   const shouldShowNoticeMessage = Boolean(noticeMessage && (!room || room.status === "waiting"));
   const participantPreview = room && room.status === "waiting" ? (
@@ -1353,9 +1465,12 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
                         <RealOrAiRoundResultPanel
                           currentPlayerId={currentPlayerId}
                           isAdvancingRound={isAdvancingRound}
+                          isSettingResultView={isSettingResultView}
                           isHost={isHost}
                           onNextRound={nextRound}
+                          onShowScore={showScore}
                           result={roundResult}
+                          view={roundResultView}
                         />
                       ) : null}
 

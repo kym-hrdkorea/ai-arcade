@@ -7,7 +7,7 @@ export const drawDuelGame = {
   longDescription:
     "제한 시간 안에 그린 그림을 인간 참가자와 AI가 함께 추측하며 점수를 겨루는 실시간 파티 게임입니다.",
   minPlayers: 2,
-  maxPlayers: 100,
+  maxPlayers: 120,
   estimatedMinutes: 8,
   thumbnail: "/games/draw-duel-arcade.webp",
   route: "/games/draw-duel",

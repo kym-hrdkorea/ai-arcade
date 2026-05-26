@@ -6,12 +6,14 @@ import type {
   EventAck,
   EventResponse,
   RealOrAiAnswerAckPayload,
+  RealOrAiAnswerCountPayload,
   RealOrAiCountdownPayload,
   RealOrAiGameResultPayload,
   RealOrAiGameStartNoticePayload,
   RealOrAiRoomJoinedPayload,
   RealOrAiRoomState,
   RealOrAiRoomStatePayload,
+  RealOrAiResultViewPayload,
   RealOrAiRoundResultPayload,
   RealOrAiRoundStartPayload,
   ServerToClientEvents,
@@ -44,6 +46,7 @@ type ArcadeSocket = Socket<
 >;
 
 type RuntimeOptions = {
+  answerCountFlushMs?: number;
   secondMs?: number;
 };
 
@@ -92,9 +95,22 @@ function toInitialRemainingSeconds(round: RealOrAiRoundStartPayload): number {
 }
 
 export function createRealOrAiSocketRuntime(options: RuntimeOptions = {}) {
+  const answerCountFlushMs = options.answerCountFlushMs ?? 25;
   const secondMs = options.secondMs ?? 1000;
+  const answerCountTimers = new Map<string, TimerHandle>();
   const countdownTimers = new Map<string, TimerHandle>();
   const answeringTimers = new Map<string, TimerHandle>();
+
+  const pendingAnswerCounts = new Map<string, RealOrAiAnswerCountPayload>();
+
+  function clearAnswerCountTimer(roomCode: string) {
+    const timer = answerCountTimers.get(roomCode);
+
+    if (timer) {
+      clearTimeout(timer);
+      answerCountTimers.delete(roomCode);
+    }
+  }
 
   function clearCountdownTimer(roomCode: string) {
     const timer = countdownTimers.get(roomCode);
@@ -115,11 +131,16 @@ export function createRealOrAiSocketRuntime(options: RuntimeOptions = {}) {
   }
 
   function clearRoomTimers(roomCode: string) {
+    clearAnswerCountTimer(roomCode);
     clearCountdownTimer(roomCode);
     clearAnsweringTimer(roomCode);
   }
 
   function clearAllTimers() {
+    for (const roomCode of answerCountTimers.keys()) {
+      clearAnswerCountTimer(roomCode);
+    }
+
     for (const roomCode of countdownTimers.keys()) {
       clearCountdownTimer(roomCode);
     }
@@ -127,6 +148,31 @@ export function createRealOrAiSocketRuntime(options: RuntimeOptions = {}) {
     for (const roomCode of answeringTimers.keys()) {
       clearAnsweringTimer(roomCode);
     }
+  }
+
+  function flushAnswerCount(io: ArcadeServer, roomCode: string) {
+    clearAnswerCountTimer(roomCode);
+    const count = pendingAnswerCounts.get(roomCode);
+
+    if (!count) {
+      return;
+    }
+
+    pendingAnswerCounts.delete(roomCode);
+    io.to(realOrAiSocketRoomName(roomCode)).emit("real-or-ai:answer-count", count);
+  }
+
+  function scheduleAnswerCount(io: ArcadeServer, count: RealOrAiAnswerCountPayload) {
+    pendingAnswerCounts.set(count.roomCode, count);
+
+    if (answerCountTimers.has(count.roomCode)) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      flushAnswerCount(io, count.roomCode);
+    }, answerCountFlushMs);
+    answerCountTimers.set(count.roomCode, timer);
   }
 
   function scheduleAnswering(
@@ -222,7 +268,9 @@ export function createRealOrAiSocketRuntime(options: RuntimeOptions = {}) {
   return {
     clearAllTimers,
     clearRoomTimers,
+    flushAnswerCount,
     scheduleCountdown,
+    scheduleAnswerCount,
   };
 }
 
@@ -339,14 +387,12 @@ export function registerRealOrAiHandlers(
       const result = manager.submitAnswer(payload, socket.id);
       sendAck<RealOrAiAnswerAckPayload>(ack, { ok: true, data: result.ack });
       socket.emit("real-or-ai:answer-ack", result.ack);
-      io.to(realOrAiSocketRoomName(result.ack.roomCode)).emit(
-        "real-or-ai:answer-count",
-        result.count,
-      );
-      emitRoomState(io, result.room);
+      runtime.scheduleAnswerCount(io, result.count);
 
       if (result.kind === "round-result") {
         runtime.clearRoomTimers(result.room.roomCode);
+        runtime.flushAnswerCount(io, result.room.roomCode);
+        emitRoomState(io, result.room);
         io.to(realOrAiSocketRoomName(result.room.roomCode)).emit(
           "real-or-ai:round-result",
           result.result,
@@ -377,6 +423,21 @@ export function registerRealOrAiHandlers(
       sendAck<RealOrAiCountdownPayload>(ack, { ok: true, data: result.countdown });
       emitRoomState(io, result.room);
       runtime.scheduleCountdown(io, manager, result.countdown);
+    } catch (error: unknown) {
+      const errorPayload = toErrorPayload(error);
+      sendAck(ack, { ok: false, error: errorPayload });
+      socket.emit("real-or-ai:error", errorPayload);
+    }
+  });
+
+  socket.on("real-or-ai:result-view-set", (payload, ack) => {
+    try {
+      const result = manager.setResultView(payload, socket.id);
+      sendAck<RealOrAiResultViewPayload>(ack, { ok: true, data: result.payload });
+      io.to(realOrAiSocketRoomName(result.room.roomCode)).emit(
+        "real-or-ai:result-view",
+        result.payload,
+      );
     } catch (error: unknown) {
       const errorPayload = toErrorPayload(error);
       sendAck(ack, { ok: false, error: errorPayload });

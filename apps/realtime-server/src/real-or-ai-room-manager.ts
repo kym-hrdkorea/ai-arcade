@@ -9,6 +9,7 @@ import {
   realOrAiGameStartPayloadSchema,
   realOrAiManifestSchema,
   realOrAiNextRoundPayloadSchema,
+  realOrAiResultViewSetPayloadSchema,
   realOrAiRoomCreatePayloadSchema,
   realOrAiRoomJoinPayloadSchema,
   realOrAiRoomLeavePayloadSchema,
@@ -28,6 +29,9 @@ import {
   type RealOrAiPlayerState,
   type RealOrAiPrivateRoundItem,
   type RealOrAiPublicRoundItem,
+  type RealOrAiResultView,
+  type RealOrAiResultViewPayload,
+  type RealOrAiResultViewSetPayload,
   type RealOrAiRoomCreatePayload,
   type RealOrAiRoomJoinedPayload,
   type RealOrAiRoomJoinPayload,
@@ -70,6 +74,7 @@ type InternalRound = Omit<RealOrAiRoundState, "item"> & {
   item: RealOrAiPublicRoundItem;
   privateItem: RealOrAiPrivateRoundItem;
   result?: RealOrAiRoundResultPayload;
+  resultView: RealOrAiResultView;
 };
 
 type InternalGame = {
@@ -140,6 +145,11 @@ export type RealOrAiNextRoundResult =
       kind: "game-result";
       room: RealOrAiRoomState;
     };
+
+export type RealOrAiResultViewSetResult = {
+  payload: RealOrAiResultViewPayload;
+  room: RealOrAiRoomState;
+};
 
 export type RealOrAiRoundSkipResult = {
   result: RealOrAiRoundResultPayload;
@@ -237,7 +247,7 @@ export class RealOrAiRoomManager {
       throw new RealOrAiRoomError("ROOM_NOT_WAITING", "이미 진행 중인 방입니다.");
     }
 
-    if (this.getConnectedPlayers(room).length >= room.maxPlayers) {
+    if (this.hasReachedAdmissionLimit(room)) {
       throw new RealOrAiRoomError("ROOM_FULL", "방이 가득 찼어요.");
     }
 
@@ -574,6 +584,13 @@ export class RealOrAiRoomManager {
       );
     }
 
+    if (round.resultView !== "score") {
+      throw new RealOrAiRoomError(
+        "RESULT_SCORE_NOT_OPEN",
+        "점수 화면을 먼저 확인해 주세요.",
+      );
+    }
+
     if (round.roundNumber >= game.totalRounds) {
       const gameResult = this.finishGame(room, now);
 
@@ -617,6 +634,52 @@ export class RealOrAiRoomManager {
 
     return {
       result,
+      room: this.toRoomState(room),
+    };
+  }
+
+  setResultView(
+    payload: RealOrAiResultViewSetPayload,
+    socketId: string,
+    now = new Date(),
+  ): RealOrAiResultViewSetResult {
+    const parsed = realOrAiResultViewSetPayloadSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      throw new RealOrAiRoomError(
+        "INVALID_RESULT_VIEW",
+        parsed.error.issues[0]?.message ?? "결과 화면 정보를 확인해 주세요.",
+      );
+    }
+
+    const room = this.requireRoom(parsed.data.roomCode);
+    const player = this.requirePlayerInRoom(room, socketId);
+    this.assertHost(room, player.playerId);
+    const round = this.requireCurrentRound(room);
+
+    if (room.status !== "round-result" || round.status !== "round-result") {
+      throw new RealOrAiRoomError(
+        "ROUND_RESULT_NOT_READY",
+        "라운드 결과 화면에서만 진행할 수 있어요.",
+      );
+    }
+
+    if (round.roundId !== parsed.data.roundId) {
+      throw new RealOrAiRoomError(
+        "ROUND_MISMATCH",
+        "현재 라운드 정보를 확인해 주세요.",
+      );
+    }
+
+    round.resultView = parsed.data.view;
+    room.updatedAt = now.toISOString();
+
+    return {
+      payload: {
+        roomCode: room.roomCode,
+        roundId: round.roundId,
+        view: round.resultView,
+      },
       room: this.toRoomState(room),
     };
   }
@@ -736,6 +799,7 @@ export class RealOrAiRoomManager {
     };
 
     round.result = result;
+    round.resultView = "answer";
     round.status = "round-result";
     game.roundResults = [
       ...game.roundResults.filter((candidate) => candidate.roundId !== round.roundId),
@@ -861,6 +925,7 @@ export class RealOrAiRoomManager {
       endsAt: new Date(now.getTime() + (room.settings.roundDurationSeconds * 1000)).toISOString(),
       item: this.toPublicRoundItem(privateItem),
       privateItem,
+      resultView: "answer",
       roundId: randomUUID(),
       roundNumber: roundIndex + 1,
       startedAt: now.toISOString(),
@@ -1054,6 +1119,11 @@ export class RealOrAiRoomManager {
     };
   }
 
+  private hasReachedAdmissionLimit(_room: InternalRoom): boolean {
+    // maxPlayers is a display target, not an admission cap.
+    return false;
+  }
+
   private getConnectedPlayers(room: InternalRoom): InternalPlayer[] {
     return room.players.filter((player) => player.connectionStatus === "connected");
   }
@@ -1082,7 +1152,12 @@ export class RealOrAiRoomManager {
       return nickname;
     }
 
-    for (let index = 2; index <= REAL_OR_AI_MAX_PLAYERS + 1; index += 1) {
+    const suffixSearchLimit = Math.max(
+      existingNicknames.length + 2,
+      REAL_OR_AI_MAX_PLAYERS + 2,
+    );
+
+    for (let index = 2; index <= suffixSearchLimit; index += 1) {
       const suffix = String(index);
       const base = nickname.slice(0, Math.max(1, 12 - suffix.length));
       const candidate = `${base}${suffix}`;
@@ -1102,6 +1177,7 @@ export class RealOrAiRoomManager {
     return {
       endsAt: round.endsAt,
       item: round.item,
+      resultView: round.resultView,
       roundId: round.roundId,
       roundNumber: round.roundNumber,
       startedAt: round.startedAt,
@@ -1114,6 +1190,7 @@ export class RealOrAiRoomManager {
     return {
       createdAt: room.createdAt,
       currentRound: room.currentRound ? this.toPublicRound(room.currentRound) : undefined,
+      gameResult: room.status === "final-result" ? room.game?.gameResult : undefined,
       gameId: room.gameId,
       hostPlayerId: room.hostPlayerId,
       maxPlayers: room.maxPlayers,
@@ -1128,6 +1205,7 @@ export class RealOrAiRoomManager {
           score,
         }),
       ),
+      roundResult: room.status === "round-result" ? room.currentRound?.result : undefined,
       roomCode: room.roomCode,
       roomId: room.roomId,
       settings: { ...room.settings },

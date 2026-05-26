@@ -2,16 +2,24 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_REAL_OR_AI_SETTINGS,
+  REAL_OR_AI_GAME_ID,
+  REAL_OR_AI_MAX_PLAYERS,
+  REAL_OR_AI_MIN_PLAYERS,
   realOrAiAnswerSubmitPayloadSchema,
   realOrAiGameStartPayloadSchema,
   realOrAiManifestSchema,
   realOrAiNextRoundPayloadSchema,
   realOrAiPrivateRoundItemSchema,
   realOrAiPublicRoundItemSchema,
+  realOrAiResultViewPayloadSchema,
+  realOrAiResultViewSchema,
+  realOrAiResultViewSetPayloadSchema,
   realOrAiRoomCreatePayloadSchema,
   realOrAiRoomJoinPayloadSchema,
   realOrAiRoomRejoinPayloadSchema,
   realOrAiRoomResetPayloadSchema,
+  realOrAiRoomStateSchema,
+  realOrAiRoundStateSchema,
   realOrAiRoundSkipPayloadSchema,
   realOrAiSettingsSchema,
   realOrAiSettingsUpdatePayloadSchema,
@@ -294,5 +302,108 @@ describe("Real or AI shared schemas", () => {
       expect(schema.safeParse({ roomCode: "ABC123" }).success).toBe(true);
       expect(schema.safeParse({ roomCode: "TOO-LONG" }).success).toBe(false);
     }
+  });
+
+  it("validates result view transition payloads", () => {
+    expect(realOrAiResultViewSchema.safeParse("answer").success).toBe(true);
+    expect(realOrAiResultViewSchema.safeParse("score").success).toBe(true);
+    expect(realOrAiResultViewSetPayloadSchema.safeParse({
+      roomCode: "ABC123",
+      roundId,
+      view: "score",
+    }).success).toBe(true);
+    expect(realOrAiResultViewPayloadSchema.safeParse({
+      roomCode: "ABC123",
+      roundId,
+      view: "score",
+    }).success).toBe(true);
+    expect(realOrAiResultViewSetPayloadSchema.safeParse({
+      roomCode: "ABC123",
+      roundId,
+      view: "answer",
+    }).success).toBe(false);
+    expect(realOrAiResultViewSetPayloadSchema.safeParse({
+      roomCode: "ABC123",
+      roundId: "bad-round",
+      view: "score",
+    }).success).toBe(false);
+  });
+
+  it("validates room snapshots with result view and public results", () => {
+    const roundState = {
+      endsAt: "2026-05-19T00:01:00.000Z",
+      item: publicRoundItem,
+      resultView: "score",
+      roundId,
+      roundNumber: 1,
+      startedAt: "2026-05-19T00:00:00.000Z",
+      status: "round-result",
+      totalRounds: 1,
+    } as const;
+    const roundResult = {
+      candidates: [
+        { ...publicRoundItem.candidates[0], sourceType: "real" },
+        { ...publicRoundItem.candidates[1], sourceType: "ai" },
+      ],
+      correctCandidateId: realCandidate.id,
+      endedAt: "2026-05-19T00:01:00.000Z",
+      entries: [],
+      reason: "time-up",
+      roomCode: "ABC123",
+      roundId,
+      roundNumber: 1,
+      topScorers: [],
+      totalRounds: 1,
+    } as const;
+    const gameResult = {
+      endedAt: "2026-05-19T00:02:00.000Z",
+      results: [
+        {
+          correctCount: 0,
+          nickname: "플레이어",
+          playerId,
+          rank: 1,
+          totalScore: 0,
+        },
+      ],
+      roomCode: "ABC123",
+      rounds: [roundResult],
+    };
+    const roomState = {
+      createdAt: "2026-05-19T00:00:00.000Z",
+      currentRound: roundState,
+      gameId: REAL_OR_AI_GAME_ID,
+      hostPlayerId: playerId,
+      maxPlayers: REAL_OR_AI_MAX_PLAYERS,
+      minPlayers: REAL_OR_AI_MIN_PLAYERS,
+      playableRoundCount: 1,
+      players: [
+        {
+          connectionStatus: "connected",
+          joinedAt: "2026-05-19T00:00:00.000Z",
+          nickname: "플레이어",
+          playerId,
+          score: 0,
+        },
+      ],
+      roundResult,
+      roomCode: "ABC123",
+      roomId: "33333333-3333-4333-8333-333333333333",
+      settings: DEFAULT_REAL_OR_AI_SETTINGS,
+      status: "round-result",
+      updatedAt: "2026-05-19T00:01:00.000Z",
+    } as const;
+
+    expect(realOrAiRoundStateSchema.safeParse(roundState).success).toBe(true);
+    expect(realOrAiRoomStateSchema.safeParse(roomState).success).toBe(true);
+    expect(
+      realOrAiRoomStateSchema.safeParse({
+        ...roomState,
+        currentRound: undefined,
+        gameResult,
+        roundResult: undefined,
+        status: "final-result",
+      }).success,
+    ).toBe(true);
   });
 });

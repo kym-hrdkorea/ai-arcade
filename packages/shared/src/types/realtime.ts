@@ -5,7 +5,7 @@ import type * as RealOrAi from "./real-or-ai.js";
 export const DRAW_DUEL_GAME_ID = "draw-duel";
 export const ROOM_CODE_LENGTH = 6;
 export const ROOM_MIN_PLAYERS = 2;
-export const ROOM_MAX_PLAYERS = 100;
+export const ROOM_MAX_PLAYERS = 120;
 
 export type RoomStatus = "waiting" | "playing" | "ended";
 export type PlayerConnectionStatus = "connected" | "disconnected";
@@ -391,6 +391,10 @@ export type ClientToServerEvents = {
     payload: RealOrAi.RealOrAiNextRoundPayload,
     ack?: EventAck<RealOrAi.RealOrAiCountdownPayload | RealOrAi.RealOrAiGameResultPayload>,
   ) => void;
+  "real-or-ai:result-view-set": (
+    payload: RealOrAi.RealOrAiResultViewSetPayload,
+    ack?: EventAck<RealOrAi.RealOrAiResultViewPayload>,
+  ) => void;
   "real-or-ai:round-skip": (
     payload: RealOrAi.RealOrAiRoundSkipPayload,
     ack?: EventAck<RealOrAi.RealOrAiRoundResultPayload>,
@@ -427,6 +431,7 @@ export type ServerToClientEvents = {
   "real-or-ai:answer-count": (payload: RealOrAi.RealOrAiAnswerCountPayload) => void;
   "real-or-ai:timer-tick": (payload: RealOrAi.RealOrAiTimerTickPayload) => void;
   "real-or-ai:round-result": (payload: RealOrAi.RealOrAiRoundResultPayload) => void;
+  "real-or-ai:result-view": (payload: RealOrAi.RealOrAiResultViewPayload) => void;
   "real-or-ai:game-result": (payload: RealOrAi.RealOrAiGameResultPayload) => void;
   "real-or-ai:error": (payload: ErrorPayload) => void;
   error: (payload: ErrorPayload) => void;

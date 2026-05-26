@@ -7,14 +7,14 @@ describe("game registry", () => {
     expect(games).toContain(drawDuelGame);
     expect(drawDuelGame.id).toBe("draw-duel");
     expect(drawDuelGame.route).toBe("/games/draw-duel");
-    expect(drawDuelGame.maxPlayers).toBe(100);
+    expect(drawDuelGame.maxPlayers).toBe(120);
   });
 
   it("registers real-or-ai with the expected route and capacity", () => {
     expect(games).toContain(realOrAiGame);
     expect(realOrAiGame.id).toBe("real-or-ai");
     expect(realOrAiGame.route).toBe("/games/real-or-ai");
-    expect(realOrAiGame.maxPlayers).toBe(100);
+    expect(realOrAiGame.maxPlayers).toBe(120);
   });
 
   it("registers guide slides for every game card", () => {

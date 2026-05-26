@@ -14,6 +14,7 @@ import type {
   RealOrAiGameResultPayload,
   RealOrAiGameStartNoticePayload,
   RealOrAiPrivateRoundItem,
+  RealOrAiResultViewPayload,
   RealOrAiRoomJoinedPayload,
   RealOrAiRoomStatePayload,
   RealOrAiRoundResultPayload,
@@ -129,6 +130,15 @@ function emitRoomJoin(socket: TestClientSocket, roomCode: string, nickname = "gu
   });
 }
 
+function emitRoomRejoin(
+  socket: TestClientSocket,
+  payload: Parameters<ClientToServerEvents["real-or-ai:room-rejoin"]>[0],
+) {
+  return new Promise<EventResponse<RealOrAiRoomJoinedPayload>>((resolve) => {
+    socket.emit("real-or-ai:room-rejoin", payload, resolve);
+  });
+}
+
 function emitSettingsUpdate(
   socket: TestClientSocket,
   roomCode: string,
@@ -166,6 +176,15 @@ function emitNextRound(socket: TestClientSocket, roomCode: string) {
       socket.emit("real-or-ai:next-round", { roomCode }, resolve);
     },
   );
+}
+
+function emitResultViewSet(
+  socket: TestClientSocket,
+  payload: Parameters<ClientToServerEvents["real-or-ai:result-view-set"]>[0],
+) {
+  return new Promise<EventResponse<RealOrAiResultViewPayload>>((resolve) => {
+    socket.emit("real-or-ai:result-view-set", payload, resolve);
+  });
 }
 
 function emitRoomReset(socket: TestClientSocket, roomCode: string) {
@@ -395,6 +414,80 @@ describe("real-or-ai socket handlers", () => {
     expect(result.entries.every((entry) => entry.pointsAwarded === 0)).toBe(true);
   });
 
+  it("syncs result score view only after host validation", async () => {
+    const host = await connectTrackedClient();
+    const guest = await connectTrackedClient();
+    const { host: hostJoin, roomCode } = await createJoinedRoom(host, guest);
+    await emitSettingsUpdate(host, roomCode, {
+      answerLockMode: "first-submit",
+      countdownSeconds: 3,
+      roundCount: 2,
+      roundDurationSeconds: 5,
+      shuffleMode: "random",
+    });
+
+    const roundStartPromise = waitFor(
+      host,
+      "real-or-ai:round-start",
+    );
+    expectOk(await emitGameStart(host, roomCode));
+    await roundStartPromise;
+    const skipped = expectOk(await emitRoundSkip(host, roomCode));
+
+    const nextBeforeScoreErrorPromise = waitFor(host, "real-or-ai:error");
+    const nextBeforeScore = await emitNextRound(host, roomCode);
+    expect(nextBeforeScore.ok).toBe(false);
+    expect((await nextBeforeScoreErrorPromise).code).toBe("RESULT_SCORE_NOT_OPEN");
+
+    const guestErrorPromise = waitFor(guest, "real-or-ai:error");
+    const guestTransition = await emitResultViewSet(guest, {
+      roomCode,
+      roundId: skipped.roundId,
+      view: "score",
+    });
+    expect(guestTransition.ok).toBe(false);
+    expect((await guestErrorPromise).code).toBe("HOST_ONLY");
+
+    const wrongRoundErrorPromise = waitFor(host, "real-or-ai:error");
+    const wrongRoundTransition = await emitResultViewSet(host, {
+      roomCode,
+      roundId: "11111111-1111-4111-8111-111111111111",
+      view: "score",
+    });
+    expect(wrongRoundTransition.ok).toBe(false);
+    expect((await wrongRoundErrorPromise).code).toBe("ROUND_MISMATCH");
+
+    const guestViewPromise = waitFor(guest, "real-or-ai:result-view");
+    const hostTransition = expectOk(await emitResultViewSet(host, {
+      roomCode,
+      roundId: skipped.roundId,
+      view: "score",
+    }));
+
+    expect(hostTransition).toEqual({
+      roomCode,
+      roundId: skipped.roundId,
+      view: "score",
+    });
+    expect(await guestViewPromise).toEqual(hostTransition);
+
+    host.disconnect();
+    const rejoinedHost = await connectTrackedClient();
+    const rejoinedStatePromise = waitFor(rejoinedHost, "real-or-ai:room-state");
+    const rejoined = expectOk(await emitRoomRejoin(rejoinedHost, {
+      playerId: hostJoin.currentPlayerId,
+      reconnectToken: hostJoin.reconnectToken,
+      roomCode,
+    }));
+
+    expect(rejoined.room.currentRound?.resultView).toBe("score");
+    expect(rejoined.room.roundResult?.roundId).toBe(skipped.roundId);
+    expect((await rejoinedStatePromise).room.currentRound?.resultView).toBe("score");
+
+    const nextAfterScore = expectOk(await emitNextRound(rejoinedHost, roomCode));
+    expect("remainingSeconds" in nextAfterScore).toBe(true);
+  });
+
   it("skips a round, returns final results, and clears timers on reset", async () => {
     const host = await connectTrackedClient();
     const guest = await connectTrackedClient();
@@ -416,6 +509,11 @@ describe("real-or-ai socket handlers", () => {
 
     const skipped = expectOk(await emitRoundSkip(host, roomCode));
     expect(skipped.reason).toBe("operator-skip");
+    expectOk(await emitResultViewSet(host, {
+      roomCode,
+      roundId: skipped.roundId,
+      view: "score",
+    }));
 
     const gameResultPromise = waitFor(
       guest,

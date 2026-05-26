@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const REAL_OR_AI_GAME_ID = "real-or-ai";
 export const REAL_OR_AI_MIN_PLAYERS = 2;
-export const REAL_OR_AI_MAX_PLAYERS = 100;
+export const REAL_OR_AI_MAX_PLAYERS = 120;
 export const REAL_OR_AI_MAX_ROUNDS_HARD_LIMIT = 163;
 export const REAL_OR_AI_ROUND_DURATION_OPTIONS = [5, 10, 15, 30, 45, 60] as const;
 export const REAL_OR_AI_COUNTDOWN_SECONDS_OPTIONS = [3, 5, 10] as const;
@@ -23,6 +23,7 @@ export type RealOrAiRoomStatus =
   | "final-result";
 export type RealOrAiPlayerConnectionStatus = "connected" | "disconnected";
 export type RealOrAiRoundEndReason = "time-up" | "all-submitted" | "operator-skip";
+export type RealOrAiResultView = "answer" | "score";
 
 export type RealOrAiSettings = {
   answerLockMode: RealOrAiAnswerLockMode;
@@ -79,6 +80,7 @@ export type RealOrAiManifest = {
 export type RealOrAiRoundState = {
   endsAt: string;
   item: RealOrAiPublicRoundItem;
+  resultView: RealOrAiResultView;
   roundId: string;
   roundNumber: number;
   startedAt: string;
@@ -98,12 +100,14 @@ export type RealOrAiAnswerState = {
 export type RealOrAiRoomState = {
   createdAt: string;
   currentRound?: RealOrAiRoundState;
+  gameResult?: RealOrAiGameResultPayload;
   gameId: typeof REAL_OR_AI_GAME_ID;
   hostPlayerId: string;
   maxPlayers: typeof REAL_OR_AI_MAX_PLAYERS;
   minPlayers: typeof REAL_OR_AI_MIN_PLAYERS;
   playableRoundCount: number;
   players: RealOrAiPlayerState[];
+  roundResult?: RealOrAiRoundResultPayload;
   roomCode: string;
   roomId: string;
   settings: RealOrAiSettings;
@@ -184,6 +188,14 @@ export type RealOrAiGameStartPayload = {
 export type RealOrAiNextRoundPayload = {
   roomCode: string;
 };
+
+export type RealOrAiResultViewSetPayload = {
+  roomCode: string;
+  roundId: string;
+  view: Extract<RealOrAiResultView, "score">;
+};
+
+export type RealOrAiResultViewPayload = RealOrAiResultViewSetPayload;
 
 export type RealOrAiRoundSkipPayload = {
   roomCode: string;
@@ -453,6 +465,8 @@ export const realOrAiRoundEndReasonSchema = z.enum([
   "operator-skip",
 ]);
 
+export const realOrAiResultViewSchema = z.enum(["answer", "score"]);
+
 export const realOrAiPlayerStateSchema = z
   .object({
     connectionStatus: realOrAiPlayerConnectionStatusSchema,
@@ -467,6 +481,7 @@ export const realOrAiRoundStateSchema = z
   .object({
     endsAt: z.string().datetime("endsAt은 ISO 날짜 문자열이어야 합니다."),
     item: realOrAiPublicRoundItemSchema,
+    resultView: realOrAiResultViewSchema,
     roundId: z.string().uuid("roundId 형식을 확인해 주세요."),
     roundNumber: z.number().int().min(1),
     startedAt: z.string().datetime("startedAt은 ISO 날짜 문자열이어야 합니다."),
@@ -479,6 +494,7 @@ export const realOrAiRoomStateSchema = z
   .object({
     createdAt: z.string().datetime("createdAt은 ISO 날짜 문자열이어야 합니다."),
     currentRound: realOrAiRoundStateSchema.optional(),
+    gameResult: z.lazy(() => realOrAiGameResultPayloadSchema).optional(),
     gameId: z.literal(REAL_OR_AI_GAME_ID),
     hostPlayerId: z.string().uuid("hostPlayerId 형식을 확인해 주세요."),
     maxPlayers: z.literal(REAL_OR_AI_MAX_PLAYERS),
@@ -488,7 +504,8 @@ export const realOrAiRoomStateSchema = z
       .int("playableRoundCount는 정수여야 합니다.")
       .min(0)
       .max(REAL_OR_AI_MAX_ROUNDS_HARD_LIMIT),
-    players: z.array(realOrAiPlayerStateSchema).max(REAL_OR_AI_MAX_PLAYERS),
+    players: z.array(realOrAiPlayerStateSchema),
+    roundResult: z.lazy(() => realOrAiRoundResultPayloadSchema).optional(),
     roomCode: realOrAiRoomCodeSchema,
     roomId: z.string().uuid("roomId 형식을 확인해 주세요."),
     settings: realOrAiSettingsSchema,
@@ -527,12 +544,12 @@ export const realOrAiRoundResultPayloadSchema = z
     ]),
     correctCandidateId: realOrAiSafeIdSchema,
     endedAt: z.string().datetime("endedAt은 ISO 날짜 문자열이어야 합니다."),
-    entries: z.array(realOrAiRoundResultEntrySchema).max(REAL_OR_AI_MAX_PLAYERS),
+    entries: z.array(realOrAiRoundResultEntrySchema),
     reason: realOrAiRoundEndReasonSchema,
     roomCode: realOrAiRoomCodeSchema,
     roundId: z.string().uuid("roundId 형식을 확인해 주세요."),
     roundNumber: z.number().int().min(1),
-    topScorers: z.array(realOrAiRoundResultEntrySchema).max(REAL_OR_AI_MAX_PLAYERS),
+    topScorers: z.array(realOrAiRoundResultEntrySchema),
     totalRounds: z.number().int().min(1).max(REAL_OR_AI_MAX_ROUNDS_HARD_LIMIT),
   })
   .strict();
@@ -551,7 +568,7 @@ export const realOrAiGameResultEntrySchema = z
 export const realOrAiGameResultPayloadSchema = z
   .object({
     endedAt: z.string().datetime("endedAt은 ISO 날짜 문자열이어야 합니다."),
-    results: z.array(realOrAiGameResultEntrySchema).max(REAL_OR_AI_MAX_PLAYERS),
+    results: z.array(realOrAiGameResultEntrySchema),
     roomCode: realOrAiRoomCodeSchema,
     rounds: z.array(realOrAiRoundResultPayloadSchema).max(REAL_OR_AI_MAX_ROUNDS_HARD_LIMIT),
   })
@@ -607,6 +624,16 @@ export const realOrAiNextRoundPayloadSchema = z
     roomCode: realOrAiRoomCodeSchema,
   })
   .strict();
+
+export const realOrAiResultViewSetPayloadSchema = z
+  .object({
+    roomCode: realOrAiRoomCodeSchema,
+    roundId: z.string().uuid("roundId 형식을 확인해 주세요."),
+    view: z.literal("score"),
+  })
+  .strict();
+
+export const realOrAiResultViewPayloadSchema = realOrAiResultViewSetPayloadSchema;
 
 export const realOrAiRoundSkipPayloadSchema = z
   .object({
@@ -698,9 +725,9 @@ export const realOrAiAnswerAckPayloadSchema = z
 
 export const realOrAiAnswerCountPayloadSchema = z
   .object({
-    playerCount: z.number().int().min(0).max(REAL_OR_AI_MAX_PLAYERS),
+    playerCount: z.number().int().min(0),
     roomCode: realOrAiRoomCodeSchema,
     roundId: z.string().uuid("roundId 형식을 확인해 주세요."),
-    submittedCount: z.number().int().min(0).max(REAL_OR_AI_MAX_PLAYERS),
+    submittedCount: z.number().int().min(0),
   })
   .strict();

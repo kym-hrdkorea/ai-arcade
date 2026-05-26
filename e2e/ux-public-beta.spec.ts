@@ -333,8 +333,25 @@ test.describe("public beta UX readiness", () => {
       await host.hostPage.getByRole("button", { name: "후보 B 선택" }).click();
       await host.hostPage.getByRole("button", { name: "진짜 사진 제출" }).click();
       await expect(host.hostPage.getByText("라운드 1 / 1")).toBeVisible({ timeout: 6000 });
-      await expect(host.hostPage.getByText("최고 득점")).toBeVisible();
+      await expect(host.hostPage.getByTestId("real-ai-answer-result-summary")).toBeVisible();
+      await expect(host.hostPage.getByTestId("real-ai-round-result")).not.toContainText(
+        "최고 득점",
+      );
       await expect(host.hostPage.getByText("정답").first()).toBeVisible();
+      await expect(host.hostPage.getByRole("button", { name: "점수 보기" })).toBeVisible();
+      await expect(guestPage.getByText("호스트가 점수 화면으로 넘기고 있습니다.")).toBeVisible();
+      await expect(host.hostPage.getByRole("button", { name: "최종 랭킹 보기" })).toHaveCount(0);
+
+      await host.hostPage.getByRole("button", { name: "점수 보기" }).click();
+      await expect(guestPage.getByTestId("real-ai-score-result-list")).toBeVisible({
+        timeout: 6000,
+      });
+      await guestPage.reload({ waitUntil: "networkidle" });
+      await expect(guestPage.getByTestId("real-ai-score-result-list")).toBeVisible({
+        timeout: 6000,
+      });
+      await expect(guestPage.getByText("호스트가 점수 화면으로 넘기고 있습니다.")).toHaveCount(0);
+      await expect(host.hostPage.getByText("이번 라운드 최고 득점")).toBeVisible();
       await expect(host.hostPage.getByRole("button", { name: "최종 랭킹 보기" })).toBeVisible();
 
       await host.hostPage.getByRole("button", { name: "최종 랭킹 보기" }).click();
@@ -566,6 +583,15 @@ test.describe("public beta UX readiness", () => {
       await expect(guestPage.getByTestId("real-ai-round-result")).toBeVisible({
         timeout: 6000,
       });
+      await expect(hostPage.getByTestId("real-ai-answer-result-summary")).toBeInViewport();
+      await expect(hostPage.getByRole("button", { name: "점수 보기" })).toBeInViewport();
+      await expect(guestPage.getByText("호스트가 점수 화면으로 넘기고 있습니다.")).toBeInViewport();
+
+      await hostPage.getByRole("button", { name: "점수 보기" }).click();
+      await expect(guestPage.getByTestId("real-ai-score-result-list")).toBeVisible({
+        timeout: 6000,
+      });
+      await expect(hostPage.getByText("이번 라운드 최고 득점")).toBeInViewport();
     } finally {
       await Promise.all([hostContext.close(), guestContext.close()]);
     }

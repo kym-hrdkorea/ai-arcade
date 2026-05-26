@@ -193,29 +193,23 @@ describe("RoomManager", () => {
     expect(joined.room.players[1]?.nickname).toBe("호스트2");
   });
 
-  it("rejects players over the room maximum", () => {
+  it("allows players over the displayed room capacity", () => {
     const manager = new RoomManager();
     const created = createRoom(manager);
+    let latest = created.room;
 
-    for (let index = 2; index <= ROOM_MAX_PLAYERS; index += 1) {
-      manager.joinRoom(
+    for (let index = 2; index <= ROOM_MAX_PLAYERS + 5; index += 1) {
+      latest = manager.joinRoom(
         {
           roomCode: created.room.roomCode,
           nickname: `참가${index}`,
         },
         `socket-${index}`,
-      );
+      ).room;
     }
 
-    expect(() =>
-      manager.joinRoom(
-        {
-          roomCode: created.room.roomCode,
-          nickname: "초과",
-        },
-        "socket-overflow",
-      ),
-    ).toThrow(RoomError);
+    expect(latest.maxPlayers).toBe(ROOM_MAX_PLAYERS);
+    expect(latest.players).toHaveLength(ROOM_MAX_PLAYERS + 5);
   });
 
   it("transfers host to the earliest remaining player when host leaves", () => {
