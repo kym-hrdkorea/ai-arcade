@@ -56,6 +56,10 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
+import { AudioToggle } from "@/components/audio-toggle";
+import { AUDIO_VERDICT_CUE_DELAY_MS, type MusicScene } from "@/lib/game-audio";
+import { useAudioScene, useGameAudio } from "@/lib/use-game-audio";
+
 import { DrawDuelAnswerPanel } from "./draw-duel-answer-panel";
 import { DrawDuelBoard } from "./draw-duel-board";
 import {
@@ -203,6 +207,7 @@ export function DrawDuelLobby({
   entryMode = "full",
   initialRoomCode: initialRoomCodeProp = "",
 }: DrawDuelLobbyProps) {
+  const { playCue } = useGameAudio();
   const searchParams = useSearchParams();
   const initialRoomCode = normalizeRoomCode(
     initialRoomCodeProp || searchParams.get("roomCode") || "",
@@ -386,6 +391,7 @@ export function DrawDuelLobby({
     });
 
     socket.on("connect_error", () => {
+      playCue("ui_error");
       setConnectionStatus("error");
       setErrorMessage("게임 서버 연결을 확인해 주세요.");
     });
@@ -395,6 +401,7 @@ export function DrawDuelLobby({
     });
 
     socket.io.on("reconnect_failed", () => {
+      playCue("ui_error");
       setConnectionStatus("error");
       setErrorMessage("재접속에 실패했습니다.");
     });
@@ -408,6 +415,7 @@ export function DrawDuelLobby({
     });
 
     socket.on("game:start", (payload) => {
+      playCue("game_start", { key: `draw-duel:game-start:${payload.roomCode}` });
       setNoticeMessage(payload.message);
     });
 
@@ -426,10 +434,19 @@ export function DrawDuelLobby({
         setResultSlide("ai-answer");
         setGameResult(null);
         setGuessText("");
+        playCue("round_start", {
+          key: `draw-duel:round-start:${payload.round.roundId}`,
+        });
       }
 
       if (payload.round.status !== "drawing") {
         setWord(null);
+      }
+
+      if (payload.round.status === "ai-guessing") {
+        playCue("ai_thinking", {
+          key: `draw-duel:ai-thinking:${payload.round.roundId}`,
+        });
       }
 
       setRoundState(payload);
@@ -442,6 +459,18 @@ export function DrawDuelLobby({
     });
 
     socket.on("draw-duel:timer-tick", (payload) => {
+      if (payload.remainingSeconds > 0 && payload.remainingSeconds <= 3) {
+        playCue("countdown_tick", {
+          key: `draw-duel:timer:${payload.roundId}:${payload.remainingSeconds}`,
+        });
+      }
+
+      if (payload.remainingSeconds === 0) {
+        playCue("countdown_go", {
+          key: `draw-duel:timer-go:${payload.roundId}`,
+        });
+      }
+
       setTimer(payload);
     });
 
@@ -470,6 +499,10 @@ export function DrawDuelLobby({
         return;
       }
 
+      playCue("ai_thinking", {
+        key: `draw-duel:ai-thinking-step:${payload.roundId}:${payload.stepIndex}`,
+      });
+
       setAIThinkingSteps((current) => {
         const currentRoundSteps = current.filter(
           (step) => step.roundId === payload.roundId,
@@ -484,6 +517,23 @@ export function DrawDuelLobby({
     });
 
     socket.on("draw-duel:round-result", (payload) => {
+      playCue("round_result", {
+        key: `draw-duel:round-result:${payload.roundId}`,
+      });
+
+      const playerGuess = payload.guesses.find(
+        (guess) =>
+          guess.source === "player" &&
+          guess.playerId === currentPlayerIdRef.current,
+      );
+
+      if (playerGuess) {
+        playCue(playerGuess.isCorrect ? "correct" : "wrong", {
+          delayMs: AUDIO_VERDICT_CUE_DELAY_MS,
+          key: `draw-duel:verdict:${payload.roundId}:${playerGuess.playerId}`,
+        });
+      }
+
       setRoundResult(payload);
       setResultSlide("ai-answer");
       setGuessLogs(payload.guesses);
@@ -492,11 +542,17 @@ export function DrawDuelLobby({
 
     socket.on("draw-duel:result-slide-set", (payload) => {
       if (roundIdRef.current === payload.roundId) {
+        playCue(payload.slide === "showdown" ? "score_reveal" : "answer_reveal", {
+          key: `draw-duel:result-slide:${payload.roundId}:${payload.slide}`,
+        });
         setResultSlide(payload.slide);
       }
     });
 
     socket.on("draw-duel:game-result", (payload) => {
+      playCue("final_result", {
+        key: `draw-duel:final-result:${payload.roomCode}:${payload.endedAt}`,
+      });
       setGameResult(payload);
       setRoundResult(null);
       setResultSlide("ai-answer");
@@ -505,6 +561,7 @@ export function DrawDuelLobby({
     });
 
     socket.on("error", (payload) => {
+      playCue("ui_error");
       setErrorMessage(friendlyErrorMessage(payload));
     });
 
@@ -596,6 +653,9 @@ export function DrawDuelLobby({
     ? `${currentRound.roundNumber}/${currentRound.totalRounds}`
     : "대기";
   const mobileTimerLabel = remainingSeconds === null ? "--" : `${remainingSeconds}초`;
+  const musicScene: MusicScene = !room || room.status === "waiting" ? "lobby" : "muted";
+
+  useAudioScene(musicScene);
 
   useEffect(() => {
     if (!isHost) {
@@ -643,10 +703,12 @@ export function DrawDuelLobby({
     requestedNickname?: string,
   ) {
     if (!response.ok) {
+      playCue("ui_error");
       setErrorMessage(friendlyErrorMessage(response.error));
       return;
     }
 
+    playCue("room_join");
     applyJoined(response.data, requestedNickname);
   }
 
@@ -655,6 +717,7 @@ export function DrawDuelLobby({
     const socket = socketRef.current;
 
     if (!socket || connectionStatus !== "connected") {
+      playCue("ui_error");
       setErrorMessage("게임 서버 연결을 확인해 주세요.");
       return;
     }
@@ -675,6 +738,7 @@ export function DrawDuelLobby({
     const socket = socketRef.current;
 
     if (!socket || connectionStatus !== "connected") {
+      playCue("ui_error");
       setErrorMessage("게임 서버 연결을 확인해 주세요.");
       return;
     }
@@ -694,6 +758,7 @@ export function DrawDuelLobby({
     const socket = socketRef.current;
 
     if (!socket || !room) {
+      playCue("ui_back");
       clearStoredSession();
       setRoom(null);
       setCurrentPlayerId(null);
@@ -707,10 +772,12 @@ export function DrawDuelLobby({
 
     socket.emit("room:leave", { roomCode: room.roomCode }, (response) => {
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("ui_back");
       setRoom(null);
       setCurrentPlayerId(null);
       clearStoredSession();
@@ -733,10 +800,12 @@ export function DrawDuelLobby({
 
     socket.emit("game:start", { roomCode: room.roomCode }, (response) => {
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("game_start");
       setNoticeMessage(response.data.message);
       setErrorMessage(null);
     });
@@ -757,10 +826,12 @@ export function DrawDuelLobby({
       },
       (response) => {
         if (!response.ok) {
+          playCue("ui_error");
           setErrorMessage(friendlyErrorMessage(response.error));
           return;
         }
 
+        playCue("ui_confirm");
         setRoom(response.data.room);
         setNoticeMessage("게임 설정을 저장했습니다.");
         setErrorMessage(null);
@@ -786,10 +857,14 @@ export function DrawDuelLobby({
       },
       (response) => {
         if (!response.ok) {
+          playCue("ui_error");
           setErrorMessage(friendlyErrorMessage(response.error));
           return;
         }
 
+        playCue("guess_submit", {
+          key: `draw-duel:guess-submit:${response.data.guessId}`,
+        });
         setGuessLogs((current) =>
           current.some((guess) => guess.guessId === response.data.guessId)
             ? current
@@ -811,10 +886,12 @@ export function DrawDuelLobby({
 
     socket.emit("draw-duel:next-round", { roomCode: room.roomCode }, (response) => {
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("ui_confirm");
       setErrorMessage(null);
     });
   }
@@ -835,10 +912,14 @@ export function DrawDuelLobby({
       },
       (response) => {
         if (!response.ok) {
+          playCue("ui_error");
           setErrorMessage(friendlyErrorMessage(response.error));
           return;
         }
 
+        playCue(nextSlide === "showdown" ? "score_reveal" : "answer_reveal", {
+          key: `draw-duel:result-slide:${roundResult.roundId}:${nextSlide}`,
+        });
         setResultSlide(nextSlide);
         setErrorMessage(null);
       },
@@ -854,10 +935,12 @@ export function DrawDuelLobby({
 
     socket.emit("draw-duel:round-skip", { roomCode: room.roomCode }, (response) => {
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("ui_confirm");
       setNoticeMessage("라운드를 스킵했습니다.");
       setErrorMessage(null);
     });
@@ -872,10 +955,12 @@ export function DrawDuelLobby({
 
     socket.emit("draw-duel:room-reset", { roomCode: room.roomCode }, (response) => {
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("ui_back");
       setNoticeMessage("방을 대기 상태로 리셋했습니다.");
       setErrorMessage(null);
       setPendingDangerAction(null);
@@ -895,14 +980,17 @@ export function DrawDuelLobby({
 
   async function copyJoinUrl() {
     if (!joinUrl || typeof navigator === "undefined" || !navigator.clipboard) {
+      playCue("ui_error");
       setCopyNotice("참가 링크를 직접 공유해 주세요.");
       return;
     }
 
     try {
       await navigator.clipboard.writeText(joinUrl);
+      playCue("copy_link");
       setCopyNotice("참가 링크를 복사했습니다.");
     } catch {
+      playCue("ui_error");
       setCopyNotice("참가 링크를 직접 공유해 주세요.");
     }
   }
@@ -1126,13 +1214,16 @@ export function DrawDuelLobby({
               <ArrowLeft aria-hidden="true" size={18} />
               허브로
             </Link>
-            <div className="arcade-badge arcade-badge-cyan min-h-11 px-4">
-              {connectionStatus === "connected" ? (
-                <PlugZap aria-hidden="true" size={16} />
-              ) : (
-                <Plug aria-hidden="true" size={16} />
-              )}
-              <span className="ml-2">{statusText(connectionStatus)}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <AudioToggle />
+              <div className="arcade-badge arcade-badge-cyan min-h-11 px-4">
+                {connectionStatus === "connected" ? (
+                  <PlugZap aria-hidden="true" size={16} />
+                ) : (
+                  <Plug aria-hidden="true" size={16} />
+                )}
+                <span className="ml-2">{statusText(connectionStatus)}</span>
+              </div>
             </div>
           </div>
 
@@ -1195,18 +1286,21 @@ export function DrawDuelLobby({
                       내 닉네임: <strong className="text-screen-white">{currentPlayer?.nickname}</strong>
                     </p>
                   </div>
-                  <button
-                    className="arcade-button arcade-button-danger"
-                    onClick={() => setPendingDangerAction("leave")}
-                    type="button"
-                  >
-                    <LogOut aria-hidden="true" size={18} />
-                    나가기
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <AudioToggle />
+                    <button
+                      className="arcade-button arcade-button-danger"
+                      onClick={() => setPendingDangerAction("leave")}
+                      type="button"
+                    >
+                      <LogOut aria-hidden="true" size={18} />
+                      나가기
+                    </button>
+                  </div>
                 </div>
 
                 {isPlayingView ? (
-                  <div className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2 border border-line-gray bg-console-black p-2 text-center text-xs font-black sm:hidden">
+                  <div className="grid grid-cols-[1fr_1fr_1fr_auto_auto] items-center gap-2 border border-line-gray bg-console-black p-2 text-center text-xs font-black sm:hidden">
                     <div className="grid gap-1">
                       <span className="text-muted-gray">라운드</span>
                       <strong className="font-arcade text-coin-yellow">{mobileRoundLabel}</strong>
@@ -1230,6 +1324,7 @@ export function DrawDuelLobby({
                     >
                       <LogOut aria-hidden="true" size={16} />
                     </button>
+                    <AudioToggle className="h-10 min-h-10 w-10 px-0 [&>span]:hidden" />
                   </div>
                 ) : null}
 

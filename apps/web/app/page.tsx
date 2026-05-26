@@ -1,16 +1,20 @@
 import { games } from "@ai-arcade/shared";
 
 import { ArcadeLogo } from "@/components/arcade-logo";
+import { AudioScene } from "@/components/audio-scene";
+import { AudioToggle } from "@/components/audio-toggle";
 import { HubPlayConsole } from "@/components/hub-play-console";
 
 export default function HomePage() {
   return (
     <main className="min-h-screen overflow-hidden bg-console-black text-screen-white">
+      <AudioScene scene="hub" />
       <div className="screen-grid min-h-screen">
         <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-4 sm:px-8 sm:py-6 lg:px-10">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line-gray/80 pb-4 sm:gap-4 sm:pb-5">
             <ArcadeLogo />
             <div className="flex flex-wrap gap-3">
+              <AudioToggle />
               <div className="arcade-badge arcade-badge-green min-h-12 px-4">
                 바로 플레이
               </div>
@@ -25,11 +29,11 @@ export default function HomePage() {
               <div>
                 <p className="font-arcade text-xs text-pixel-blue">게임 선택</p>
                 <h2 className="mt-2 text-2xl font-black leading-tight text-screen-white sm:mt-3 sm:text-5xl">
-                  플레이할 게임을 고르세요
+                  함께 즐길 게임을 고르세요
                 </h2>
                 <p className="mt-3 hidden max-w-3xl text-sm leading-6 text-muted-gray sm:mt-4 sm:block sm:text-lg sm:leading-8">
-                  방 코드와 QR로 바로 입장하는 실시간 AI 레크리에이션 허브입니다.
-                  화살표로 게임을 넘기고, 원하는 게임의 로비를 시작하세요.
+                  호스트가 방을 만들고, 참가자는 방 코드나 QR로 바로 들어옵니다.
+                  그림을 맞히거나 진짜 사진을 고르는 짧은 라운드형 AI 게임을 플레이하세요.
                 </p>
               </div>
               <div className="hidden grid-cols-3 gap-2 text-center text-xs sm:grid sm:min-w-[360px] sm:text-sm">

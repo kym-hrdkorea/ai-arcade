@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { KeyboardEvent } from "react";
 
 import { GameGuideButton } from "@/components/game-guide-button";
+import { useGameAudio } from "@/lib/use-game-audio";
 
 type HubGameSelectorProps = {
   games: readonly GameModuleMeta[];
@@ -33,6 +34,7 @@ export function HubGameSelector({
   onSelectedGameIdChange,
   selectedGameId,
 }: HubGameSelectorProps) {
+  const { playCue } = useGameAudio();
   const activeIndex = Math.max(
     0,
     games.findIndex((game) => game.id === selectedGameId),
@@ -47,6 +49,7 @@ export function HubGameSelector({
     const nextGame = games[getWrappedIndex(index, games.length)];
 
     if (nextGame) {
+      playCue("ui_select");
       onSelectedGameIdChange(nextGame.id);
     }
   }
@@ -163,7 +166,11 @@ export function HubGameSelector({
               </button>
             </div>
 
-            <Link className="arcade-button arcade-button-primary w-full" href={activeGame.route}>
+            <Link
+              className="arcade-button arcade-button-primary w-full"
+              href={activeGame.route}
+              onClick={() => playCue("ui_confirm")}
+            >
               <Play aria-hidden="true" size={18} />
               게임 시작
             </Link>

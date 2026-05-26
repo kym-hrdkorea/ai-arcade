@@ -30,6 +30,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
+import { AudioToggle } from "@/components/audio-toggle";
+import type { MusicScene } from "@/lib/game-audio";
+import { useAudioScene } from "@/lib/use-game-audio";
+
 import { DrawDuelBoard } from "./draw-duel-board";
 
 type ScreenMode = "admin" | "screen";
@@ -345,6 +349,9 @@ export function DrawDuelRoomScreen({ mode, roomCode }: DrawDuelRoomScreenProps) 
     mode === "admin" ||
     room.status === "waiting" ||
     room.settings.screenJoinCodeVisibility === "always";
+  const musicScene: MusicScene = !room || room.status === "waiting" ? "lobby" : "muted";
+
+  useAudioScene(musicScene);
 
   return (
     <main className="min-h-[100svh] bg-console-black text-screen-white">
@@ -361,6 +368,7 @@ export function DrawDuelRoomScreen({ mode, roomCode }: DrawDuelRoomScreenProps) 
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <AudioToggle />
               {shouldShowHeaderRoomCode ? (
                 <span className="arcade-badge arcade-badge-yellow min-h-11 px-4">
                   방 코드 <span className="ml-2 font-arcade">{normalizedRoomCode}</span>

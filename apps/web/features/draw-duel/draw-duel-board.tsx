@@ -27,6 +27,8 @@ import {
 } from "react";
 import type { Socket } from "socket.io-client";
 
+import { useGameAudio } from "@/lib/use-game-audio";
+
 type DrawDuelSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type DrawDuelViewerRole = "drawer" | "guesser" | "watcher";
 
@@ -195,6 +197,7 @@ export function DrawDuelBoard({
   socket,
   viewerRole = "watcher",
 }: DrawDuelBoardProps) {
+  const { playCue } = useGameAudio();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const historyRef = useRef<DrawStrokePayload[]>([]);
   const activeStrokeRef = useRef<ActiveStroke | null>(null);
@@ -212,6 +215,28 @@ export function DrawDuelBoard({
       ? "정답자"
       : "관전";
   const selectedWidthOption = widthOptions.find((option) => option.value === width) ?? widthOptions[1];
+
+  function selectTool(nextTool: DrawTool) {
+    if (tool !== nextTool) {
+      playCue("tool_select");
+    }
+
+    setTool(nextTool);
+  }
+
+  function selectColor(nextColor: string) {
+    playCue("tool_select");
+    setColor(nextColor);
+    setTool("pen");
+  }
+
+  function selectWidth(nextWidth: number) {
+    if (width !== nextWidth) {
+      playCue("tool_select");
+    }
+
+    setWidth(nextWidth);
+  }
 
   const rememberStroke = useCallback((stroke: DrawStrokePayload) => {
     historyRef.current.push(stroke);
@@ -357,6 +382,7 @@ export function DrawDuelBoard({
       rememberStroke(payload);
       socket.emit("draw-duel:stroke", payload, (response) => {
         if (!response.ok) {
+          playCue("ui_error");
           setBoardMessage(response.error.message);
         }
       });
@@ -366,7 +392,7 @@ export function DrawDuelBoard({
       activeStroke.hasSent = true;
       activeStroke.lastSentAt = performance.now();
     },
-    [rememberStroke, room.roomCode, socket],
+    [playCue, rememberStroke, room.roomCode, socket],
   );
 
   function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -499,8 +525,11 @@ export function DrawDuelBoard({
       clearCanvas(canvas);
     }
 
+    playCue("canvas_clear");
+
     socket.emit("draw-duel:canvas-clear", payload, (response) => {
       if (!response.ok) {
+        playCue("ui_error");
         setBoardMessage(response.error.message);
       }
     });
@@ -530,7 +559,7 @@ export function DrawDuelBoard({
               className={`arcade-button h-11 w-11 p-0 ${
                 tool === "pen" ? "arcade-button-secondary" : "arcade-button-ghost"
               }`}
-              onClick={() => setTool("pen")}
+              onClick={() => selectTool("pen")}
               title="펜"
               type="button"
             >
@@ -542,7 +571,7 @@ export function DrawDuelBoard({
               className={`arcade-button h-11 w-11 p-0 ${
                 tool === "eraser" ? "arcade-button-secondary" : "arcade-button-ghost"
               }`}
-              onClick={() => setTool("eraser")}
+              onClick={() => selectTool("eraser")}
               title="지우개"
               type="button"
             >
@@ -594,7 +623,7 @@ export function DrawDuelBoard({
                       width === option.value ? "arcade-button-primary" : "arcade-button-ghost"
                     }`}
                     key={option.value}
-                    onClick={() => setWidth(option.value)}
+                    onClick={() => selectWidth(option.value)}
                     title={option.title}
                     type="button"
                   >
@@ -612,10 +641,7 @@ export function DrawDuelBoard({
                       color === option.value ? "border-screen-white" : "border-line-gray"
                     }`}
                     key={option.value}
-                    onClick={() => {
-                      setColor(option.value);
-                      setTool("pen");
-                    }}
+                    onClick={() => selectColor(option.value)}
                     style={{ backgroundColor: option.value }}
                     title={option.label}
                     type="button"
@@ -632,7 +658,7 @@ export function DrawDuelBoard({
               className={`arcade-button h-12 w-12 p-0 ${
                 tool === "pen" ? "arcade-button-secondary" : "arcade-button-ghost"
               }`}
-              onClick={() => setTool("pen")}
+              onClick={() => selectTool("pen")}
               title="펜"
               type="button"
             >
@@ -644,7 +670,7 @@ export function DrawDuelBoard({
               className={`arcade-button h-12 w-12 p-0 ${
                 tool === "eraser" ? "arcade-button-secondary" : "arcade-button-ghost"
               }`}
-              onClick={() => setTool("eraser")}
+              onClick={() => selectTool("eraser")}
               title="지우개"
               type="button"
             >
@@ -660,7 +686,7 @@ export function DrawDuelBoard({
                     width === option.value ? "arcade-button-primary" : "arcade-button-ghost"
                   }`}
                   key={option.value}
-                  onClick={() => setWidth(option.value)}
+                  onClick={() => selectWidth(option.value)}
                   title={option.title}
                   type="button"
                 >
@@ -680,7 +706,7 @@ export function DrawDuelBoard({
                   }`}
                   disabled={tool === "eraser"}
                   key={option.value}
-                  onClick={() => setColor(option.value)}
+                  onClick={() => selectColor(option.value)}
                   style={{ backgroundColor: option.value }}
                   title={option.label}
                   type="button"

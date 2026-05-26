@@ -5,6 +5,8 @@ import { HelpCircle, Keyboard, QrCode, Smartphone, Ticket, Users, X } from "luci
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useGameAudio } from "@/lib/use-game-audio";
+
 type QuickJoinGame = Pick<GameModuleMeta, "id" | "route" | "title">;
 
 type HubActionsProps = {
@@ -17,27 +19,27 @@ const helpItems = [
   {
     icon: Ticket,
     title: "게임 선택",
-    body: "셀렉터에서 게임을 고르고 시작을 누르면 해당 게임 로비로 이동합니다.",
+    body: "원하는 게임을 고르고 시작을 누르면 해당 게임의 로비로 이동합니다.",
   },
   {
     icon: Users,
     title: "방 만들기",
-    body: "각 게임 로비에서 호스트가 방을 만들고 참가자를 기다립니다.",
+    body: "호스트가 방을 만들고 참가자가 모이면 설정을 확인한 뒤 라운드를 시작합니다.",
   },
   {
     icon: Keyboard,
     title: "방 코드 참가",
-    body: "방 코드를 입력하면 닉네임만 정하는 참가 화면으로 이동합니다.",
+    body: "받은 방 코드를 입력하면 닉네임만 정하고 바로 참가할 수 있습니다.",
   },
   {
     icon: Smartphone,
     title: "모바일 플레이",
-    body: "휴대폰에서도 입장, 단어 입력, 정답 제출을 할 수 있습니다.",
+    body: "휴대폰에서도 입장, 그림 보기, 정답 입력, 사진 선택을 할 수 있습니다.",
   },
   {
     icon: QrCode,
     title: "QR 입장",
-    body: "호스트가 연 방의 QR을 스캔하면 해당 방으로 바로 들어갑니다.",
+    body: "호스트 화면의 QR을 스캔하면 같은 방으로 빠르게 들어갑니다.",
   },
 ];
 
@@ -46,6 +48,7 @@ export function HubActions({
   onSelectedGameIdChange,
   selectedGameId,
 }: HubActionsProps) {
+  const { playCue } = useGameAudio();
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const [internalSelectedGameId, setInternalSelectedGameId] = useState(games[0]?.id ?? "");
@@ -57,22 +60,25 @@ export function HubActions({
   const canQuickJoin = Boolean(selectedGame && roomCode.length === 6);
 
   function selectGame(gameId: string) {
+    playCue("ui_select");
     setInternalSelectedGameId(gameId);
     onSelectedGameIdChange?.(gameId);
   }
 
   const openHelp = useCallback(() => {
+    playCue("ui_select");
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : helpTriggerRef.current;
     setIsHelpOpen(true);
-  }, []);
+  }, [playCue]);
 
   const closeHelp = useCallback(() => {
+    playCue("ui_back");
     setIsHelpOpen(false);
     window.setTimeout(() => {
       previousFocusRef.current?.focus();
     }, 0);
-  }, []);
+  }, [playCue]);
 
   useEffect(() => {
     if (!isHelpOpen) {
@@ -95,8 +101,11 @@ export function HubActions({
     event.preventDefault();
 
     if (!selectedGame || !canQuickJoin) {
+      playCue("ui_error");
       return;
     }
+
+    playCue("ui_confirm");
 
     if (selectedGame.id === "draw-duel") {
       window.location.href = `/join/${roomCode}`;
@@ -148,7 +157,7 @@ export function HubActions({
             value={roomCode}
           />
           <p className="mt-2 hidden text-sm text-muted-gray sm:block" id="quick-join-status">
-            게임을 선택하고 방 코드를 입력하면 닉네임만 입력하는 참가 화면으로 이동합니다.
+            게임을 선택하고 방 코드를 입력하면 닉네임 입력 화면으로 이동합니다.
           </p>
         </div>
         <button
@@ -169,7 +178,7 @@ export function HubActions({
           type="button"
         >
           <HelpCircle aria-hidden="true" size={18} />
-          도움말
+          안내
         </button>
       </div>
 
@@ -194,7 +203,7 @@ export function HubActions({
                 </h2>
               </div>
               <button
-                aria-label="도움말 닫기"
+                aria-label="안내 닫기"
                 className="arcade-button arcade-button-ghost h-11 min-h-11 w-11 px-0"
                 onClick={closeHelp}
                 ref={closeButtonRef}
