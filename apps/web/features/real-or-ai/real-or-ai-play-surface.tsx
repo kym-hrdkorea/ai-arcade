@@ -31,6 +31,9 @@ import {
   useState,
 } from "react";
 
+import { AudioToggle } from "@/components/audio-toggle";
+import { useGameAudio } from "@/lib/use-game-audio";
+
 import {
   createCandidateViewModels,
   formatResponseTime,
@@ -120,6 +123,7 @@ export function RealOrAiAnsweringPanel({
   submittedAnswer,
   timer,
 }: RealOrAiAnsweringPanelProps) {
+  const { playCue } = useGameAudio();
   const [zoomCandidate, setZoomCandidate] = useState<RealOrAiCandidateViewModel | null>(null);
   const candidateViews = useMemo(
     () => createCandidateViewModels(round.item.candidates),
@@ -144,9 +148,19 @@ export function RealOrAiAnsweringPanel({
     selectedCandidateId ?? undefined,
   );
 
+  function selectCandidate(candidateId: string) {
+    playCue("candidate_select");
+    onCandidateSelect(candidateId);
+  }
+
+  function openZoom(candidate: RealOrAiCandidateViewModel) {
+    playCue("zoom_open");
+    setZoomCandidate(candidate);
+  }
+
   return (
     <section className="grid gap-2 sm:gap-4">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 border border-pixel-blue bg-pixel-blue/10 p-2 sm:gap-3 sm:p-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-2 border border-pixel-blue bg-pixel-blue/10 p-2 sm:gap-3 sm:p-3">
         <div className="min-w-0">
           <p className="font-arcade text-[0.65rem] text-electric-cyan">ROUND</p>
           <h3 className="mt-1 text-lg font-black leading-tight text-screen-white sm:text-2xl">
@@ -174,6 +188,7 @@ export function RealOrAiAnsweringPanel({
         >
           <LogOut aria-hidden="true" size={18} />
         </button>
+        <AudioToggle className="h-12 min-h-12 w-12 px-0 [&>span]:hidden" />
       </div>
 
       <div className="grid min-w-0 items-stretch gap-2 lg:grid-cols-2">
@@ -182,8 +197,8 @@ export function RealOrAiAnsweringPanel({
             disabled={hasSubmitted || isSubmittingAnswer}
             isSelected={selectedCandidateId === viewModel.candidate.id}
             key={viewModel.candidate.id}
-            onOpenZoom={setZoomCandidate}
-            onSelect={onCandidateSelect}
+            onOpenZoom={openZoom}
+            onSelect={selectCandidate}
             submitted={hasSubmitted}
             viewModel={viewModel}
           />
@@ -248,6 +263,7 @@ function CandidateCard({
   submitted,
   viewModel,
 }: CandidateCardProps) {
+  const { playCue } = useGameAudio();
   const imageFrameRef = useRef<HTMLDivElement>(null);
   const [lensGeometry, setLensGeometry] = useState<MagnifierGeometry | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
@@ -285,6 +301,7 @@ function CandidateCard({
         return next;
       }
 
+      playCue("zoom_open");
       window.requestAnimationFrame(() => {
         const frame = imageFrameRef.current;
 
@@ -298,7 +315,7 @@ function CandidateCard({
 
       return next;
     });
-  }, [updateLensAtPoint]);
+  }, [playCue, updateLensAtPoint]);
 
   function startLensDrag(event: PointerEvent<HTMLDivElement>) {
     if (event.target instanceof Element && event.target.closest("button")) {

@@ -51,6 +51,10 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
+import { AudioToggle } from "@/components/audio-toggle";
+import { AUDIO_VERDICT_CUE_DELAY_MS, type MusicScene } from "@/lib/game-audio";
+import { useAudioScene, useGameAudio } from "@/lib/use-game-audio";
+
 import { applyRoundResultViewTransition } from "./real-or-ai-play-helpers";
 import {
   RealOrAiAnsweringPanel,
@@ -217,6 +221,7 @@ function saveJoinedSession(payload: RealOrAiRoomJoinedPayload) {
 }
 
 export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
+  const { playCue } = useGameAudio();
   const searchParams = useSearchParams();
   const initialRoomCode = normalizeRoomCode(searchParams.get("roomCode") ?? "");
   const isJoinOnly = entryMode === "join-only";
@@ -225,6 +230,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
   const qrModalCloseButtonRef = useRef<HTMLButtonElement>(null);
   const qrModalTriggerRef = useRef<HTMLButtonElement>(null);
   const previousQrFocusRef = useRef<HTMLElement | null>(null);
+  const currentPlayerIdRef = useRef<string | null>(null);
   const roundResultRef = useRef<RealOrAiRoundResultPayload | null>(null);
 
   const [connectionStatus, setConnectionStatus] =
@@ -326,6 +332,10 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
   useEffect(() => {
     roundResultRef.current = roundResult;
   }, [roundResult]);
+
+  useEffect(() => {
+    currentPlayerIdRef.current = currentPlayerId;
+  }, [currentPlayerId]);
 
   const applyRoomSnapshot = useCallback((nextRoom: RealOrAiRoomState) => {
     setRoom(nextRoom);
@@ -442,6 +452,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.on("connect_error", () => {
+      playCue("ui_error");
       setConnectionStatus("error");
       setErrorMessage("게임 서버 연결을 확인해 주세요.");
     });
@@ -451,6 +462,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.io.on("reconnect_failed", () => {
+      playCue("ui_error");
       setConnectionStatus("error");
     });
 
@@ -459,10 +471,23 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.on("real-or-ai:settings-updated", () => {
+      playCue("ui_confirm");
       setNoticeMessage("설정이 업데이트되었습니다.");
     });
 
     socket.on("real-or-ai:countdown", (payload) => {
+      if (payload.remainingSeconds > 0 && payload.remainingSeconds <= 3) {
+        playCue("countdown_tick", {
+          key: `real-or-ai:countdown:${payload.roomCode}:${payload.startsAt}:${payload.remainingSeconds}`,
+        });
+      }
+
+      if (payload.remainingSeconds === 0) {
+        playCue("countdown_go", {
+          key: `real-or-ai:countdown-go:${payload.roomCode}:${payload.startsAt}`,
+        });
+      }
+
       setCountdown(payload);
       setRoundStart(null);
       setTimer(null);
@@ -479,6 +504,9 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.on("real-or-ai:round-start", (payload) => {
+      playCue("round_start", {
+        key: `real-or-ai:round-start:${payload.round.roundId}`,
+      });
       setCountdown(null);
       setRoundStart(payload);
       setRoundResult(null);
@@ -493,10 +521,25 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.on("real-or-ai:timer-tick", (payload) => {
+      if (payload.remainingSeconds > 0 && payload.remainingSeconds <= 3) {
+        playCue("countdown_tick", {
+          key: `real-or-ai:timer:${payload.roundId}:${payload.remainingSeconds}`,
+        });
+      }
+
+      if (payload.remainingSeconds === 0) {
+        playCue("countdown_go", {
+          key: `real-or-ai:timer-go:${payload.roundId}`,
+        });
+      }
+
       setTimer(payload);
     });
 
     socket.on("real-or-ai:answer-ack", (payload) => {
+      playCue("answer_submit", {
+        key: `real-or-ai:answer-submit:${payload.roundId}:${payload.submittedAt}`,
+      });
       setSubmittedAnswer(payload);
       setSelectedCandidateId(payload.selectedCandidateId);
       setIsSubmittingAnswer(false);
@@ -507,6 +550,21 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.on("real-or-ai:round-result", (payload) => {
+      playCue("answer_reveal", {
+        key: `real-or-ai:round-result:${payload.roundId}`,
+      });
+
+      const playerEntry = payload.entries.find(
+        (entry) => entry.playerId === currentPlayerIdRef.current,
+      );
+
+      if (playerEntry) {
+        playCue(playerEntry.isCorrect ? "correct" : "wrong", {
+          delayMs: AUDIO_VERDICT_CUE_DELAY_MS,
+          key: `real-or-ai:verdict:${payload.roundId}:${playerEntry.playerId}`,
+        });
+      }
+
       setRoundResult(payload);
       setRoundResultView("answer");
       setCountdown(null);
@@ -518,6 +576,12 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.on("real-or-ai:result-view", (payload) => {
+      if (payload.view === "score") {
+        playCue("score_reveal", {
+          key: `real-or-ai:score-reveal:${payload.roundId}`,
+        });
+      }
+
       setRoundResultView((currentView) =>
         applyRoundResultViewTransition(roundResultRef.current, currentView, payload),
       );
@@ -525,6 +589,9 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.on("real-or-ai:game-result", (payload) => {
+      playCue("final_result", {
+        key: `real-or-ai:final-result:${payload.roomCode}:${payload.endedAt}`,
+      });
       setGameResult(payload);
       setCountdown(null);
       setTimer(null);
@@ -540,6 +607,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     });
 
     socket.on("real-or-ai:error", (payload) => {
+      playCue("ui_error");
       setErrorMessage(friendlyErrorMessage(payload));
     });
 
@@ -549,7 +617,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [applyRoomSnapshot, initialRoomCode]);
+  }, [applyRoomSnapshot, initialRoomCode, playCue]);
 
   const connectedPlayerCount =
     room?.players.filter((player) => player.connectionStatus === "connected").length ?? 0;
@@ -592,10 +660,12 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
 
   function handleJoined(response: EventResponse<RealOrAiRoomJoinedPayload>) {
     if (!response.ok) {
+      playCue("ui_error");
       setErrorMessage(friendlyErrorMessage(response.error));
       return;
     }
 
+    playCue("room_join");
     saveJoinedSession(response.data);
     setCurrentPlayerId(response.data.currentPlayerId);
     applyRoomSnapshot(response.data.room);
@@ -609,6 +679,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     const socket = socketRef.current;
 
     if (!socket || connectionStatus !== "connected") {
+      playCue("ui_error");
       setErrorMessage("게임 서버 연결을 확인해 주세요.");
       return;
     }
@@ -627,6 +698,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     const socket = socketRef.current;
 
     if (!socket || connectionStatus !== "connected") {
+      playCue("ui_error");
       setErrorMessage("게임 서버 연결을 확인해 주세요.");
       return;
     }
@@ -650,10 +722,12 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
 
     socket.emit("real-or-ai:room-leave", { roomCode: room.roomCode }, (response) => {
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("ui_back");
       clearStoredSession();
       setRoom(null);
       setCurrentPlayerId(null);
@@ -689,10 +763,12 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       },
       (response) => {
         if (!response.ok) {
+          playCue("ui_error");
           setErrorMessage(friendlyErrorMessage(response.error));
           return;
         }
 
+        playCue("ui_confirm");
         setRoom(response.data.room);
         setErrorMessage(null);
       },
@@ -708,10 +784,12 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
 
     socket.emit("real-or-ai:game-start", { roomCode: room.roomCode }, (response) => {
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("game_start");
       setNoticeMessage(response.data.message);
     });
   }
@@ -743,10 +821,14 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
         setIsSubmittingAnswer(false);
 
         if (!response.ok) {
+          playCue("ui_error");
           setErrorMessage(friendlyErrorMessage(response.error));
           return;
         }
 
+        playCue("answer_submit", {
+          key: `real-or-ai:answer-submit:${response.data.roundId}:${response.data.submittedAt}`,
+        });
         setSubmittedAnswer(response.data);
         setSelectedCandidateId(response.data.selectedCandidateId);
         setErrorMessage(null);
@@ -773,10 +855,14 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
         setIsSettingResultView(false);
 
         if (!response.ok) {
+          playCue("ui_error");
           setErrorMessage(friendlyErrorMessage(response.error));
           return;
         }
 
+        playCue("score_reveal", {
+          key: `real-or-ai:score-reveal:${roundResult.roundId}`,
+        });
         setRoundResultView((currentView) =>
           applyRoundResultViewTransition(roundResult, currentView, response.data),
         );
@@ -797,10 +883,12 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setIsAdvancingRound(false);
 
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("ui_confirm");
       setErrorMessage(null);
     });
   }
@@ -817,10 +905,14 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
       setIsSkippingRound(false);
 
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("answer_reveal", {
+        key: `real-or-ai:round-result:${response.data.roundId}`,
+      });
       setRoundResult(response.data);
       setRoundResultView("answer");
       setCountdown(null);
@@ -839,10 +931,12 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
 
     socket.emit("real-or-ai:room-reset", { roomCode: room.roomCode }, (response) => {
       if (!response.ok) {
+        playCue("ui_error");
         setErrorMessage(friendlyErrorMessage(response.error));
         return;
       }
 
+      playCue("ui_back");
       setRoom(response.data.room);
       setCountdown(null);
       setRoundStart(null);
@@ -863,14 +957,17 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
 
   async function copyJoinUrl() {
     if (!joinUrl || typeof navigator === "undefined" || !navigator.clipboard) {
+      playCue("ui_error");
       setCopyNotice("복사할 링크가 없습니다.");
       return;
     }
 
     try {
       await navigator.clipboard.writeText(joinUrl);
+      playCue("copy_link");
       setCopyNotice("참가 링크를 복사했습니다.");
     } catch {
+      playCue("ui_error");
       setCopyNotice("브라우저에서 복사를 허용하지 않았습니다.");
     }
   }
@@ -907,8 +1004,12 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
     room?.status === "answering" ||
     room?.status === "countdown" ||
     room?.status === "round-result";
+  const musicScene: MusicScene = !room || room.status === "waiting" ? "lobby" : "muted";
   const shouldShowRoomIdentity = Boolean(room && !isLiveGameView);
   const shouldShowNoticeMessage = Boolean(noticeMessage && (!room || room.status === "waiting"));
+
+  useAudioScene(musicScene);
+
   const participantPreview = room && room.status === "waiting" ? (
     <div className="mt-4 border border-line-gray bg-panel-gray/60 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1186,13 +1287,16 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
                 <ArrowLeft aria-hidden="true" size={18} />
                 허브로
               </Link>
-              <div className="arcade-badge arcade-badge-cyan min-h-11 px-4">
-                {connectionStatus === "connected" ? (
-                  <PlugZap aria-hidden="true" size={16} />
-                ) : (
-                  <Plug aria-hidden="true" size={16} />
-                )}
-                <span className="ml-2">{statusText(connectionStatus)}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <AudioToggle />
+                <div className="arcade-badge arcade-badge-cyan min-h-11 px-4">
+                  {connectionStatus === "connected" ? (
+                    <PlugZap aria-hidden="true" size={16} />
+                  ) : (
+                    <Plug aria-hidden="true" size={16} />
+                  )}
+                  <span className="ml-2">{statusText(connectionStatus)}</span>
+                </div>
               </div>
             </header>
           ) : null}
@@ -1244,14 +1348,17 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
                           </h1>
                         </div>
                       )}
-                      <button
-                        className="arcade-button arcade-button-danger"
-                        onClick={leaveRoom}
-                        type="button"
-                      >
-                        <LogOut aria-hidden="true" size={18} />
-                        나가기
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <AudioToggle />
+                        <button
+                          className="arcade-button arcade-button-danger"
+                          onClick={leaveRoom}
+                          type="button"
+                        >
+                          <LogOut aria-hidden="true" size={18} />
+                          나가기
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <div>
@@ -1413,7 +1520,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
                           className="grid gap-3 border border-coin-yellow bg-coin-yellow/15 p-3"
                           data-testid="real-ai-countdown-panel"
                         >
-                          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2">
                             <div className="min-w-0">
                               <p className="font-arcade text-xs text-coin-yellow">READY</p>
                               <h2 className="mt-1 text-xl font-black leading-tight text-screen-white">
@@ -1438,6 +1545,7 @@ export function RealOrAiLobby({ entryMode = "full" }: RealOrAiLobbyProps) {
                             >
                               <LogOut aria-hidden="true" size={18} />
                             </button>
+                            <AudioToggle className="h-12 min-h-12 w-12 px-0 [&>span]:hidden" />
                           </div>
                           <p className="text-sm font-bold leading-6 text-muted-gray">
                             곧 두 후보가 공개됩니다. 진짜 사진을 고를 준비를 하세요.

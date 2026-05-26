@@ -4,6 +4,9 @@ const webPort = 3100;
 const realtimePort = 4100;
 const webUrl = `http://localhost:${webPort}`;
 const realtimeUrl = `http://localhost:${realtimePort}`;
+const videoMode = process.env.PLAYWRIGHT_VIDEO === "retain-on-failure"
+  ? "retain-on-failure"
+  : "off";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -20,7 +23,7 @@ export default defineConfig({
     baseURL: webUrl,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
-    video: "retain-on-failure",
+    video: videoMode,
   },
   webServer: [
     {
