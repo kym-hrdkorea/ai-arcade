@@ -70,6 +70,32 @@ async function createRealOrAiRoom(browser: Browser) {
 }
 
 test.describe("audio UX benchmark", () => {
+  test("plays the first UI cue when a normal game control unlocks audio", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "다음 게임" }).click();
+
+    await expect
+      .poll(async () => {
+        const events = await readAudioEvents(page);
+
+        return events.some(
+          (event) => event.type === "cue" && event.cue === "ui_select" && event.played,
+        );
+      })
+      .toBe(true);
+
+    const events = await readAudioEvents(page);
+    const uiSelectEvents = events.filter(
+      (event) => event.type === "cue" && event.cue === "ui_select",
+    );
+
+    expect(uiSelectEvents.some((event) => event.played)).toBe(true);
+    expect(uiSelectEvents.some((event) => event.reason === "locked")).toBe(false);
+  });
+
   test("unlocks on first audio click and plays hub cues without locked bursts", async ({
     page,
   }) => {

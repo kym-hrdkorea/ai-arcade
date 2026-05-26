@@ -545,15 +545,32 @@ class GameAudioController {
     const wasUnlocked = this.isUnlocked;
 
     if (context.state === "suspended") {
-      void context.resume().then(() => {
-        this.isUnlocked = context.state === "running";
-        if (this.isUnlocked && !wasUnlocked) {
-          this.startMusicLoop({ fadeIn: true });
-        }
-        recordAudioDebugEvent({ type: "unlock", unlocked: this.isUnlocked });
-        this.notify();
-      });
-      this.recordCueEvent(cue, false, "locked", options);
+      const requestedAtMs = getCurrentTimeMs();
+      void context.resume().then(
+        () => {
+          this.isUnlocked = context.state === "running";
+
+          if (this.isUnlocked && !wasUnlocked) {
+            this.startMusicLoop({ fadeIn: true });
+          }
+
+          if (this.isUnlocked && getCurrentTimeMs() - requestedAtMs <= 250) {
+            this.playUnlockedCue(cue, options);
+            this.recordCueEvent(cue, true, "played", options);
+          } else {
+            this.recordCueEvent(cue, false, "locked", options);
+          }
+
+          recordAudioDebugEvent({ type: "unlock", unlocked: this.isUnlocked });
+          this.notify();
+        },
+        () => {
+          this.isUnlocked = false;
+          this.recordCueEvent(cue, false, "locked", options);
+          recordAudioDebugEvent({ type: "unlock", unlocked: false });
+          this.notify();
+        },
+      );
       return false;
     }
 
@@ -569,13 +586,7 @@ class GameAudioController {
       this.startMusicLoop({ fadeIn: true });
     }
 
-    const delayMs = Math.max(0, options.delayMs ?? 0);
-    this.applyDucking(delayMs);
-
-    for (const event of cuePatterns[cue]) {
-      this.playTone(event, this.sfxGain, delayMs);
-    }
-
+    this.playUnlockedCue(cue, options);
     this.recordCueEvent(cue, true, "played", options);
     this.notify();
     return true;
@@ -608,6 +619,19 @@ class GameAudioController {
         this.fadeMusicVolume(normalVolume, 160);
       }, 180);
     }, delayMs);
+  }
+
+  private playUnlockedCue(cue: AudioCue, options: PlayCueOptions) {
+    if (!this.sfxGain) {
+      return;
+    }
+
+    const delayMs = Math.max(0, options.delayMs ?? 0);
+    this.applyDucking(delayMs);
+
+    for (const event of cuePatterns[cue]) {
+      this.playTone(event, this.sfxGain, delayMs);
+    }
   }
 
   private recordCueEvent(

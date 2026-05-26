@@ -74,7 +74,7 @@ test.describe("public beta UX readiness", () => {
     await expect(start).toBeInViewport();
     await expect(nextGame).toBeInViewport();
     await expect(page.getByRole("button", { name: "바로 참가" })).toBeInViewport();
-    await expect(page.getByText("플레이할 게임을 고르세요")).toBeVisible();
+    await expect(page.getByText("함께 즐길 게임을 고르세요")).toBeVisible();
     await expect(page.locator("body")).toContainText("테스트 가능");
     await expect(page.locator("body")).toContainText("실시간");
     await expect(page.locator("body")).toContainText("QR");
@@ -89,12 +89,13 @@ test.describe("public beta UX readiness", () => {
     expect(logoFont).toContain("arcadeFont");
     expect(logoFont).not.toContain("bodyFont");
 
-    await page.getByRole("button", { name: "도움말" }).click();
+    await page.getByRole("button", { name: "안내" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("AI Arcade 시작 안내");
     await expect(dialog).toContainText("QR 입장");
     await expect(dialog).not.toContainText("Phase 2");
-    await page.getByLabel("도움말 닫기").click();
+    await page.getByLabel("안내 닫기").click();
     await expect(dialog).toHaveCount(0);
   });
 
@@ -170,8 +171,16 @@ test.describe("public beta UX readiness", () => {
     await expect(dialog.getByRole("button", { name: "이전" })).toBeDisabled();
 
     await dialog.getByRole("button", { name: "다음" }).click();
-    await expect(dialog).toContainText("그리는 사람과 맞히는 사람");
+    await expect(dialog).toContainText("그리기와 맞히기");
     await expect(dialog).toContainText("2/5");
+
+    await dialog.getByRole("button", { name: "다음" }).click();
+    await expect(dialog).toContainText("인간 팀 점수");
+    await expect(dialog).toContainText("인간 정답자 과반수");
+    await expect(dialog).toContainText("정확히 절반은 과반수가 아님");
+
+    await dialog.getByRole("button", { name: "이전" }).click();
+    await expect(dialog).toContainText("그리기와 맞히기");
 
     await dialog.getByRole("button", { name: "이전" }).click();
     await expect(dialog).toContainText("방 만들기와 참가");
@@ -193,9 +202,11 @@ test.describe("public beta UX readiness", () => {
     await expect(realOrAiDialog).toContainText("Real or AI");
     await expect(realOrAiDialog).toContainText("방 만들기와 설정");
     await expect(realOrAiDialog).toContainText("5/10/15/30/45/60초");
-    await expect(realOrAiDialog).toContainText("권장 45초");
     await realOrAiDialog.getByRole("button", { name: "다음" }).click();
     await expect(realOrAiDialog).toContainText("진짜 사진 고르기");
+    await realOrAiDialog.getByRole("button", { name: "다음" }).click();
+    await expect(realOrAiDialog).toContainText("빠른 정답 보너스");
+    await expect(realOrAiDialog).toContainText("권장 45초");
     await page.keyboard.press("Escape");
     await expect(realOrAiDialog).toHaveCount(0);
   });

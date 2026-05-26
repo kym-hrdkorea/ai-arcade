@@ -54,6 +54,8 @@ describe("game registry", () => {
 
     const guideText = guideCopy.join("\n");
 
+    expect(guideText).toContain("인간 정답자 과반수");
+    expect(guideText).toContain("AI 정답 시 AI +100");
     expect(guideText).toContain("5/10/15/30/45/60초");
     expect(guideText).toContain("권장 45초");
 

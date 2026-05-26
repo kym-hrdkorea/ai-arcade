@@ -1,0 +1,117 @@
+[
+  {
+    "cue": "ai_thinking",
+    "filename": "ai-thinking.wav",
+    "path": "/audio/sfx/ai-thinking.wav"
+  },
+  {
+    "cue": "answer_reveal",
+    "filename": "answer-reveal.wav",
+    "path": "/audio/sfx/answer-reveal.wav"
+  },
+  {
+    "cue": "answer_submit",
+    "filename": "answer-submit.wav",
+    "path": "/audio/sfx/answer-submit.wav"
+  },
+  {
+    "cue": "candidate_select",
+    "filename": "candidate-select.wav",
+    "path": "/audio/sfx/candidate-select.wav"
+  },
+  {
+    "cue": "canvas_clear",
+    "filename": "canvas-clear.wav",
+    "path": "/audio/sfx/canvas-clear.wav"
+  },
+  {
+    "cue": "copy_link",
+    "filename": "copy-link.wav",
+    "path": "/audio/sfx/copy-link.wav"
+  },
+  {
+    "cue": "correct",
+    "filename": "correct.wav",
+    "path": "/audio/sfx/correct.wav"
+  },
+  {
+    "cue": "countdown_go",
+    "filename": "countdown-go.wav",
+    "path": "/audio/sfx/countdown-go.wav"
+  },
+  {
+    "cue": "countdown_tick",
+    "filename": "countdown-tick.wav",
+    "path": "/audio/sfx/countdown-tick.wav"
+  },
+  {
+    "cue": "final_result",
+    "filename": "final-result.wav",
+    "path": "/audio/sfx/final-result.wav"
+  },
+  {
+    "cue": "game_start",
+    "filename": "game-start.wav",
+    "path": "/audio/sfx/game-start.wav"
+  },
+  {
+    "cue": "guess_submit",
+    "filename": "guess-submit.wav",
+    "path": "/audio/sfx/guess-submit.wav"
+  },
+  {
+    "cue": "room_join",
+    "filename": "room-join.wav",
+    "path": "/audio/sfx/room-join.wav"
+  },
+  {
+    "cue": "round_result",
+    "filename": "round-result.wav",
+    "path": "/audio/sfx/round-result.wav"
+  },
+  {
+    "cue": "round_start",
+    "filename": "round-start.wav",
+    "path": "/audio/sfx/round-start.wav"
+  },
+  {
+    "cue": "score_reveal",
+    "filename": "score-reveal.wav",
+    "path": "/audio/sfx/score-reveal.wav"
+  },
+  {
+    "cue": "tool_select",
+    "filename": "tool-select.wav",
+    "path": "/audio/sfx/tool-select.wav"
+  },
+  {
+    "cue": "ui_back",
+    "filename": "ui-back.wav",
+    "path": "/audio/sfx/ui-back.wav"
+  },
+  {
+    "cue": "ui_confirm",
+    "filename": "ui-confirm.wav",
+    "path": "/audio/sfx/ui-confirm.wav"
+  },
+  {
+    "cue": "ui_error",
+    "filename": "ui-error.wav",
+    "path": "/audio/sfx/ui-error.wav"
+  },
+  {
+    "cue": "ui_select",
+    "filename": "ui-select.wav",
+    "path": "/audio/sfx/ui-select.wav"
+  },
+  {
+    "cue": "wrong",
+    "filename": "wrong.wav",
+    "path": "/audio/sfx/wrong.wav"
+  },
+  {
+    "cue": "zoom_open",
+    "filename": "zoom-open.wav",
+    "path": "/audio/sfx/zoom-open.wav"
+  }
+]
