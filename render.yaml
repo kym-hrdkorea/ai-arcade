@@ -1,0 +1,38 @@
+# Render Blueprint for apps/realtime-server (docs/OPERATIONS.md 0-3 참조)
+# 사용법: Render 대시보드 → New → Blueprint → 이 저장소 선택.
+# CORS_ORIGIN은 Vercel web URL 확정 후 대시보드에서 입력한다.
+# 실제 AI를 켤 때만 DRAW_DUEL_AI_PROVIDER=openai로 바꾸고 OPENAI_API_KEY를 입력한다.
+services:
+  - type: web
+    name: ai-arcade-realtime
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @ai-arcade/shared build && pnpm --filter realtime-server build
+    startCommand: pnpm --filter realtime-server start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.18.0
+      - key: NODE_ENV
+        value: production
+      - key: REALTIME_HOST
+        value: 0.0.0.0
+      - key: DISCONNECT_GRACE_MS
+        value: "60000"
+      - key: CORS_ORIGIN
+        sync: false
+      - key: DRAW_DUEL_AI_PROVIDER
+        value: mock
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DRAW_DUEL_AI_MODEL
+        value: gpt-5.6-luna
+      - key: DRAW_DUEL_AI_DETAIL
+        value: low
+      - key: DRAW_DUEL_AI_REASONING_EFFORT
+        value: low
+      - key: DRAW_DUEL_AI_TIMEOUT_MS
+        value: "11500"
+      - key: DRAW_DUEL_AI_RETRY_LIMIT
+        value: "1"
