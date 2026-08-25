@@ -32,6 +32,9 @@ export type OpenAIVisionAIGuesserOptions = {
   logger?: OpenAILogger;
   model?: string;
   reasoningEffort?: OpenAIReasoningEffort;
+  // Do not resolve a successful guess before this much time has passed, so
+  // the AI never answers hastily. Benchmarks pass 0 to measure raw latency.
+  minThinkingMs?: number;
   retryLimit?: number;
   timeoutMs?: number;
   // Benchmarks must disable this: the template index is built from the
@@ -348,6 +351,17 @@ function normalizeDetail(value: OpenAIImageDetail | undefined): OpenAIImageDetai
   return value === "auto" || value === "high" || value === "low" ? value : "low";
 }
 
+export const defaultMinThinkingMs = 5_000;
+const maxMinThinkingMs = 10_000;
+
+export function normalizeMinThinkingMs(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return defaultMinThinkingMs;
+  }
+
+  return Math.min(maxMinThinkingMs, Math.max(0, Math.round(value)));
+}
+
 function normalizeReasoningEffort(
   value: OpenAIReasoningEffort | undefined,
 ): OpenAIReasoningEffort | undefined {
@@ -461,7 +475,7 @@ function createPromptContent(
       text:
         "You will receive a compact time-ordered stroke sequence from a live drawing game. " +
         "The frames represent the drawing at roughly 25%, 50%, 75%, and 100% of the stroke timeline when enough strokes exist. " +
-        "Infer the intended object from the accumulating shape, not from written labels, decorative text, color tricks, arrows, or late distractor marks. " +
+        "Infer the answer from the drawn shape, and read any written text on the canvas as an extra hint from the drawer. " +
         "The hidden answer comes from a fixed, child-safe word bank of everyday drawable objects, animals, foods, places, nature items, sports items, body parts, or symbols. " +
         (category ? `The answer's broad category is ${category}. ` : "") +
         wordBankText +
@@ -519,6 +533,7 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
   private readonly logger: OpenAILogger;
   private readonly model: string;
   private readonly reasoningEffort: OpenAIReasoningEffort | undefined;
+  private readonly minThinkingMs: number;
   private readonly retryLimit: number;
   private readonly timeoutMs: number;
   private readonly useLocalTemplateGuesses: boolean;
@@ -528,6 +543,7 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
     this.detail = normalizeDetail(options.detail);
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.logger = options.logger ?? console;
+    this.minThinkingMs = normalizeMinThinkingMs(options.minThinkingMs);
     this.model = options.model?.trim() || defaultModel;
     this.reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
     this.retryLimit = normalizeRetryLimit(options.retryLimit);
@@ -568,18 +584,15 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
         const requestBody: Record<string, unknown> = {
           model: this.model,
           instructions:
-            "You are the AI opponent in a real-time drawing guessing party game. " +
-            "The human drawer is actively competing against you and may deliberately add fake written words, letters, numbers, arrows, X marks, or small unrelated doodles purely to mislead you. " +
-            "Treat any readable text or lettering inside the drawing as a trap: never return what the text says, and lower your trust in the region around it. " +
+            "You are the AI player in a real-time drawing guessing party game. " +
+            "The drawer is trying to convey one answer word with a sketch, and may also write text on the canvas as an extra hint when the shape alone is hard to express. " +
+            "Treat the drawn shape and any written text as separate clues, then combine them to infer the answer. " +
+            "Do not judge hastily; weigh both clues before deciding. " +
             "Your outcome is a scored guess: the first candidate should be the most likely answer as one short Korean common noun. " +
-            "Guess from quick, incomplete, messy, sparse, or deliberately deceptive sketches. " +
-            "The answer is expected to be a simple, everyday, child-safe drawing-game word, not a caption, sentence, rare subtype, brand, color-only description, or broad category. " +
-            "Prioritize persistent geometry, repeated strokes, object silhouette, distinctive parts, and shape changes across the stroke sequence. " +
-            "Strokes from early frames usually form the real object; marks that only appear in late frames are more likely decoys. " +
-            "Prefer specific concrete Korean common nouns over broad categories, even when confidence is low; for example choose '고양이' rather than '동물', or '자동차' rather than '탈것'. " +
+            "The answer is a simple, everyday, child-safe drawing-game word, not a caption, sentence, brand, or broad category. " +
+            "Prefer specific concrete Korean common nouns over broad categories; for example choose '고양이' rather than '동물'. " +
             "Use '모르겠음' only when the canvas is blank or truly impossible to interpret. " +
             "Return up to five distinct candidate guesses ordered from most likely to least likely with confidence values. " +
-            "If uncertain between aliases or close concepts, include both likely common nouns in the candidate list instead of returning a generic category. " +
             "Return only the candidate JSON. Do not include commentary, explanations, markdown, or extra keys.",
           input: [
             {
@@ -642,6 +655,15 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
         this.logger.info(
           `[ai] openai guess completed room=${input.roomCode} round=${input.roundId} latencyMs=${Date.now() - overallStartedAt} frames=${input.strokeSequence.length} bytes=${input.finalImage.byteLength} attempt=${attempt}/${maxAttempts} tokensIn=${usage.inputTokens ?? "?"} tokensOut=${usage.outputTokens ?? "?"} candidateCount=${candidates.length} topCandidate="${text}" candidates="${candidates.map((candidate) => candidate.text).join("|")}"`,
         );
+
+        const remainingThinkingMs =
+          this.minThinkingMs - (Date.now() - overallStartedAt);
+
+        if (remainingThinkingMs > 0) {
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, remainingThinkingMs);
+          });
+        }
 
         return {
           candidates,

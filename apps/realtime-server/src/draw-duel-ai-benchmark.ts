@@ -561,6 +561,7 @@ export async function runDrawDuelAIBenchmark() {
       info: () => undefined,
       warn: () => undefined,
     },
+    minThinkingMs: 0,
     model,
     reasoningEffort,
     retryLimit,

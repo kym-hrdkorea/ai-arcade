@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AIGuesserInput, AIGuesserScoringContext } from "./ai-guesser.js";
-import { OpenAIVisionAIGuesser } from "./openai-vision-ai-guesser.js";
+import {
+  OpenAIVisionAIGuesser,
+  defaultMinThinkingMs,
+  normalizeMinThinkingMs,
+} from "./openai-vision-ai-guesser.js";
 
 const finalImage = {
   byteLength: 16,
@@ -132,6 +136,7 @@ describe("OpenAIVisionAIGuesser", () => {
         });
       },
       logger: quietLogger,
+      minThinkingMs: 0,
       model: "gpt-5",
       reasoningEffort: "high",
     });
@@ -183,6 +188,7 @@ describe("OpenAIVisionAIGuesser", () => {
         });
       },
       logger: quietLogger,
+      minThinkingMs: 0,
     });
 
     const result = await guesser.guess(input, scoringContext);
@@ -211,6 +217,7 @@ describe("OpenAIVisionAIGuesser", () => {
             });
           }),
         logger: quietLogger,
+      minThinkingMs: 0,
         timeoutMs: 30_000,
       });
 
@@ -249,6 +256,7 @@ describe("OpenAIVisionAIGuesser", () => {
           },
         ),
       logger: quietLogger,
+      minThinkingMs: 0,
     });
 
     await expect(guesser.guess(input, scoringContext)).rejects.toThrow(
@@ -271,6 +279,7 @@ describe("OpenAIVisionAIGuesser", () => {
         });
       },
       logger: quietLogger,
+      minThinkingMs: 0,
       retryLimit: 1,
     });
 
@@ -300,6 +309,7 @@ describe("OpenAIVisionAIGuesser", () => {
         );
       },
       logger: quietLogger,
+      minThinkingMs: 0,
       retryLimit: 2,
     });
 
@@ -342,6 +352,7 @@ describe("OpenAIVisionAIGuesser template guard", () => {
         return new Response(candidateResponse("cat"), { status: 200 });
       },
       logger: quietLogger,
+      minThinkingMs: 0,
     });
 
     const result = await guesser.guess(await fixtureInput(), scoringContext);
@@ -362,6 +373,7 @@ describe("OpenAIVisionAIGuesser template guard", () => {
         });
       },
       logger: quietLogger,
+      minThinkingMs: 0,
       useLocalTemplateGuesses: false,
     });
 
@@ -385,6 +397,7 @@ describe("OpenAIVisionAIGuesser payload policy", () => {
         });
       },
       logger: quietLogger,
+      minThinkingMs: 0,
       useLocalTemplateGuesses: false,
     });
 
@@ -397,5 +410,47 @@ describe("OpenAIVisionAIGuesser payload policy", () => {
     const bodyText = requestBodies[0] ?? "";
     expect(bodyText).toContain("airplane");
     expect(bodyText).not.toContain("uniq-alias-marker");
+  });
+});
+
+describe("OpenAIVisionAIGuesser minimum thinking time", () => {
+  it("does not resolve a fast success before minThinkingMs", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const guesser = new OpenAIVisionAIGuesser({
+        apiKey: "test-key",
+        fetchImpl: async () =>
+          new Response(candidateResponse("cat"), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        logger: quietLogger,
+        minThinkingMs: 5_000,
+        useLocalTemplateGuesses: false,
+      });
+
+      let resolved = false;
+      const pending = guesser.guess(input, scoringContext).then((output) => {
+        resolved = true;
+        return output;
+      });
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(resolved).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      const output = await pending;
+      expect(resolved).toBe(true);
+      expect(output.text).toBe("cat");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clamps minThinkingMs into 0-10000 with a 5000 default", () => {
+    expect(normalizeMinThinkingMs(undefined)).toBe(defaultMinThinkingMs);
+    expect(normalizeMinThinkingMs(-100)).toBe(0);
+    expect(normalizeMinThinkingMs(99_999)).toBe(10_000);
   });
 });

@@ -98,6 +98,7 @@ export function createAIGuesser(provider = process.env.DRAW_DUEL_AI_PROVIDER ?? 
       new OpenAIVisionAIGuesser({
         apiKey,
         detail: parseDetail(process.env.DRAW_DUEL_AI_DETAIL),
+        minThinkingMs: parseBreakerInt(process.env.DRAW_DUEL_AI_MIN_THINKING_MS),
         model: process.env.DRAW_DUEL_AI_MODEL,
         reasoningEffort: parseReasoningEffort(process.env.DRAW_DUEL_AI_REASONING_EFFORT),
         retryLimit: parseRetryLimit(process.env.DRAW_DUEL_AI_RETRY_LIMIT),
