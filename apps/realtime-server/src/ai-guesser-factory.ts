@@ -1,4 +1,5 @@
 import { FakeVisionAIGuesser, MockAIGuesser, type AIGuesser } from "./ai-guesser.js";
+import { CircuitBreakerAIGuesser } from "./circuit-breaker-ai-guesser.js";
 import {
   OpenAIVisionAIGuesser,
   type OpenAIImageDetail,
@@ -19,6 +20,15 @@ function parseTimeoutMs(value: string | undefined): number | undefined {
 function parseRetryLimit(value: string | undefined): number | undefined {
   if (!value) {
     return 1;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function parseBreakerInt(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
   }
 
   const parsed = Number.parseInt(value, 10);
@@ -80,14 +90,20 @@ export function createAIGuesser(provider = process.env.DRAW_DUEL_AI_PROVIDER ?? 
       return new MockAIGuesser();
     }
 
-    return new OpenAIVisionAIGuesser({
-      apiKey,
-      detail: parseDetail(process.env.DRAW_DUEL_AI_DETAIL),
-      model: process.env.DRAW_DUEL_AI_MODEL,
-      reasoningEffort: parseReasoningEffort(process.env.DRAW_DUEL_AI_REASONING_EFFORT),
-      retryLimit: parseRetryLimit(process.env.DRAW_DUEL_AI_RETRY_LIMIT),
-      timeoutMs: parseTimeoutMs(process.env.DRAW_DUEL_AI_TIMEOUT_MS),
-    });
+    return new CircuitBreakerAIGuesser(
+      new OpenAIVisionAIGuesser({
+        apiKey,
+        detail: parseDetail(process.env.DRAW_DUEL_AI_DETAIL),
+        model: process.env.DRAW_DUEL_AI_MODEL,
+        reasoningEffort: parseReasoningEffort(process.env.DRAW_DUEL_AI_REASONING_EFFORT),
+        retryLimit: parseRetryLimit(process.env.DRAW_DUEL_AI_RETRY_LIMIT),
+        timeoutMs: parseTimeoutMs(process.env.DRAW_DUEL_AI_TIMEOUT_MS),
+      }),
+      {
+        cooldownMs: parseBreakerInt(process.env.DRAW_DUEL_AI_BREAKER_COOLDOWN_MS),
+        failureThreshold: parseBreakerInt(process.env.DRAW_DUEL_AI_BREAKER_THRESHOLD),
+      },
+    );
   }
 
   console.warn(`[ai] Unknown AI guesser provider "${provider}", falling back to mock.`);
