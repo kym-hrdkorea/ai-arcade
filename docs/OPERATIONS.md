@@ -396,6 +396,39 @@ AI 오류/timeout 수:
 다음 행사 전 수정 필요:
 ```
 
+### 2026-08-23 로컬 리허설 기록 (자동 구동 2인, Draw Duel 5R + Real or AI 5R)
+
+1차 실행 — `.env.local`에 provider/키만 설정 (detail·reasoning 기본값):
+
+```txt
+날짜/장소: 2026-08-23 / 로컬 Windows 10 (스크립트 구동 2인)
+Provider: openai (gpt-5, detail=auto, reasoning=기본)
+AI 호출 수: 3 (라운드 4~5는 circuit breaker가 차단)
+AI 오류/timeout 수: 3/3 전부 11.5s timeout → 연속 3회 실패로 breaker 열림(60s), 라운드 4~5 즉시 스킵
+게임 영향: 없음 — 5라운드 완주, 점수판/최종 결과 정상 (AI는 무득점 처리)
+교훈: 기본 reasoning으로는 gpt-5가 11.5s 상한을 초과함. low/low 설정 필수.
+```
+
+2차 실행 — `.env.example` 권장값 적용 (`DRAW_DUEL_AI_DETAIL=low`, `DRAW_DUEL_AI_REASONING_EFFORT=low`):
+
+```txt
+날짜/장소: 2026-08-23 / 로컬 Windows 10 (스크립트 구동 2인)
+Provider: openai (gpt-5, detail=low, reasoning=low)
+평균 AI 응답 시간: 6,173ms (4,145 / 8,593 / 5,431 / 6,042 / 6,656)
+최대 AI 응답 시간: 8,593ms (11.5s 상한 내)
+AI 호출 수: 5 (라운드당 1회, 재시도 0)
+AI 오류/timeout 수: 0
+토큰 사용: 입력 827/호출 고정, 출력 271~694 (평균 490)
+예상 비용: 호출당 약 $0.003 (827×$0.625/M + 490×$5/M, 2026-07 인하 단가) → 5라운드 방 1개당 약 $0.015
+정답 단어 prompt 누출 점검: 이상 없음 — 서버 로그에 category 힌트만, 정답 단어 미전송 (기존 테스트로도 보장)
+스킵/리셋/재접속 회귀 이상 여부: 이번 리허설 범위 외 (E2E 21개로 회귀 보장)
+Real or AI: 5라운드 완주, 라운드당 약 3.7s 진행, AI API 호출 0회(비용 없음)
+다음 행사 전 수정 필요: 행사용 `.env`에 DRAW_DUEL_AI_DETAIL=low, DRAW_DUEL_AI_REASONING_EFFORT=low 필수 포함.
+  30~50명 행사 네트워크 파일럿은 별도 진행.
+```
+
+참고: timeout으로 중단된 1차 호출 3건도 provider 측에서는 과금될 수 있다(응답 미수신으로 토큰 수 미확인). 자동 구동 리허설이므로 행사 수동 리허설을 대체하지 않는다.
+
 ## 10. Real or AI Final UX 운영 체크
 
 권장 설정:

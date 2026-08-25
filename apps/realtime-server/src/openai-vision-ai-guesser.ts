@@ -283,6 +283,31 @@ function normalizeCommentarySteps(value: unknown, candidates: AIGuesserCandidate
       ];
 }
 
+function extractUsageTokens(responseBody: unknown): {
+  inputTokens?: number;
+  outputTokens?: number;
+} {
+  if (typeof responseBody !== "object" || responseBody === null) {
+    return {};
+  }
+
+  const usage = (responseBody as { usage?: unknown }).usage;
+
+  if (typeof usage !== "object" || usage === null) {
+    return {};
+  }
+
+  const { input_tokens: inputTokens, output_tokens: outputTokens } = usage as {
+    input_tokens?: unknown;
+    output_tokens?: unknown;
+  };
+
+  return {
+    inputTokens: typeof inputTokens === "number" ? inputTokens : undefined,
+    outputTokens: typeof outputTokens === "number" ? outputTokens : undefined,
+  };
+}
+
 function extractAIResponse(responseBody: unknown): ParsedAIResponse {
   const outputText = extractOutputText(responseBody);
 
@@ -588,9 +613,10 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
         const { candidates, commentarySteps } = parsed;
         const topCandidate = candidates[0];
         const text = normalizeAIGuesserText(topCandidate?.text ?? "");
+        const usage = extractUsageTokens(body);
 
         this.logger.info(
-          `[ai] openai guess completed room=${input.roomCode} round=${input.roundId} latencyMs=${Date.now() - overallStartedAt} frames=${input.strokeSequence.length} bytes=${input.finalImage.byteLength} attempt=${attempt}/${maxAttempts} candidateCount=${candidates.length} topCandidate="${text}" candidates="${candidates.map((candidate) => candidate.text).join("|")}"`,
+          `[ai] openai guess completed room=${input.roomCode} round=${input.roundId} latencyMs=${Date.now() - overallStartedAt} frames=${input.strokeSequence.length} bytes=${input.finalImage.byteLength} attempt=${attempt}/${maxAttempts} tokensIn=${usage.inputTokens ?? "?"} tokensOut=${usage.outputTokens ?? "?"} candidateCount=${candidates.length} topCandidate="${text}" candidates="${candidates.map((candidate) => candidate.text).join("|")}"`,
         );
 
         return {

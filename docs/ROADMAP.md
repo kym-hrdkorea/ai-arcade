@@ -209,6 +209,7 @@ Phase 7 진입 조건:
 
 - 2026-08-23 로컬(Windows 10) 재검증: lint/typecheck/test/build/e2e 전부 통과. realtime-server 단위 테스트 95개 통과, `openai-vision-ai-guesser`, `ai-guesser-factory`, `draw-duel-snapshot-renderer`, `draw-duel-ai-postprocessor`, `draw-duel-ai-benchmark` 테스트 포함.
 - 2026-08-23 circuit breaker 추가: `circuit-breaker-ai-guesser.ts`가 openai provider를 감싸 연속 실패 시 호출을 차단하고 쿨다운 후 1회 재시도한다. `DRAW_DUEL_AI_BREAKER_THRESHOLD`, `DRAW_DUEL_AI_BREAKER_COOLDOWN_MS`로 조정.
+- 2026-08-23 실제 provider 로컬 리허설(자동 구동 2인, Draw Duel 5R + Real or AI 5R): 지연·토큰·비용을 `docs/OPERATIONS.md` §6-1에 기록. 기본 reasoning 설정은 11.5s timeout을 초과하며(3/3), breaker가 설계대로 작동함. low/low 설정에서 5/5 성공, 평균 6.2s, 호출당 약 $0.003. 행사 현장 수동 리허설은 남음.
 - 체크 표시는 mock/fake-vision provider 기준 구현·테스트 검증이다. 실제 OpenAI provider 리허설(비용·지연 기록)은 미완으로 남긴다.
 
 제외:
