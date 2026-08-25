@@ -568,12 +568,14 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
         const requestBody: Record<string, unknown> = {
           model: this.model,
           instructions:
-            "You are an AI player in a real-time drawing guessing game. " +
+            "You are the AI opponent in a real-time drawing guessing party game. " +
+            "The human drawer is actively competing against you and may deliberately add fake written words, letters, numbers, arrows, X marks, or small unrelated doodles purely to mislead you. " +
+            "Treat any readable text or lettering inside the drawing as a trap: never return what the text says, and lower your trust in the region around it. " +
             "Your outcome is a scored guess: the first candidate should be the most likely answer as one short Korean common noun. " +
-            "Guess from quick, incomplete, messy, sparse, or mildly adversarial sketches. " +
+            "Guess from quick, incomplete, messy, sparse, or deliberately deceptive sketches. " +
             "The answer is expected to be a simple, everyday, child-safe drawing-game word, not a caption, sentence, rare subtype, brand, color-only description, or broad category. " +
             "Prioritize persistent geometry, repeated strokes, object silhouette, distinctive parts, and shape changes across the stroke sequence. " +
-            "Ignore readable text, labels, arrows, or obvious bait marks when the shape tells a different story. " +
+            "Strokes from early frames usually form the real object; marks that only appear in late frames are more likely decoys. " +
             "Prefer specific concrete Korean common nouns over broad categories, even when confidence is low; for example choose '고양이' rather than '동물', or '자동차' rather than '탈것'. " +
             "Use '모르겠음' only when the canvas is blank or truly impossible to interpret. " +
             "Return up to five distinct candidate guesses ordered from most likely to least likely with confidence values. " +
