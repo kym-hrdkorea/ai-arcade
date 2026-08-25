@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const webPort = 3100;
-const realtimePort = 4100;
+// 15001-49151: outside the Windows dynamic (ephemeral) port range in both the
+// default configuration (49152+) and commonly lowered ones (1024-15000), so
+// outbound connections cannot steal these ports mid-run (EADDRINUSE flakes).
+const webPort = 23100;
+const realtimePort = 24100;
 const webUrl = `http://localhost:${webPort}`;
 const realtimeUrl = `http://localhost:${realtimePort}`;
 const videoMode = process.env.PLAYWRIGHT_VIDEO === "retain-on-failure"
@@ -41,7 +44,7 @@ export default defineConfig({
     },
     {
       command:
-        "pnpm --filter @ai-arcade/shared build && pnpm --filter @ai-arcade/qr-code build && pnpm --filter web exec next dev -p 3100",
+        `pnpm --filter @ai-arcade/shared build && pnpm --filter @ai-arcade/qr-code build && pnpm --filter web exec next dev -p ${webPort}`,
       env: {
         NEXT_PUBLIC_REALTIME_URL: `http://localhost:${realtimePort}`,
       },

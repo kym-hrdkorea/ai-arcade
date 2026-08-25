@@ -58,17 +58,16 @@ export function parseReasoningEffort(
 }
 
 export function sanitizeOpenAIApiKey(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
+  // Keys pasted into dashboards routinely pick up wrapping quotes or stray
+  // whitespace (including a line break in the middle of the value). None of
+  // those characters can appear in a real key, so strip them all first.
+  const collapsed = value?.replace(/\s+/g, "");
 
-  if (!trimmed) {
+  if (!collapsed) {
     return undefined;
   }
 
-  const unquoted =
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-      ? trimmed.slice(1, -1).trim()
-      : trimmed;
+  const unquoted = collapsed.replace(/^["']+/, "").replace(/["']+$/, "");
 
   return /^[\x21-\x7e]+$/.test(unquoted) ? unquoted : undefined;
 }

@@ -12,10 +12,16 @@ describe("sanitizeOpenAIApiKey", () => {
     expect(sanitizeOpenAIApiKey('"sk-proj-test_123"')).toBe("sk-proj-test_123");
   });
 
+  it("repairs keys that picked up whitespace or a line break when pasted", () => {
+    expect(sanitizeOpenAIApiKey("sk-proj-abc\ndef")).toBe("sk-proj-abcdef");
+    expect(sanitizeOpenAIApiKey("sk-proj test")).toBe("sk-projtest");
+    expect(sanitizeOpenAIApiKey("  sk-proj-abc \r\n def  ")).toBe("sk-proj-abcdef");
+  });
+
   it("rejects placeholders or values that cannot be sent as an HTTP header", () => {
     expect(sanitizeOpenAIApiKey("여기에_실제_API_KEY")).toBeUndefined();
-    expect(sanitizeOpenAIApiKey("sk-proj test")).toBeUndefined();
     expect(sanitizeOpenAIApiKey("")).toBeUndefined();
+    expect(sanitizeOpenAIApiKey(undefined)).toBeUndefined();
   });
 });
 
