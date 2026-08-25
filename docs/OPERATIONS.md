@@ -429,6 +429,22 @@ Real or AI: 5라운드 완주, 라운드당 약 3.7s 진행, AI API 호출 0회(
 
 참고: timeout으로 중단된 1차 호출 3건도 provider 측에서는 과금될 수 있다(응답 미수신으로 토큰 수 미확인). 자동 구동 리허설이므로 행사 수동 리허설을 대체하지 않는다.
 
+### 2026-08-23 모델 비교 (gpt-5 vs gpt-5.6-luna, 동일 그림 10장 실호출)
+
+벤치마크 fixture 10장(고양이~비행기)의 좌표를 1px 이동해 로컬 template 캐시를 우회하고, 두 모델에 같은 이미지를 보냈다 (detail=low, reasoning=low, timeout 11.5s, 시퀀스 프레임 없음).
+
+```txt
+gpt-5:        7/10 정답 · timeout 2회(햄버거, 비행기) · 지연 중앙값 9.1s / 최대 11.5s 초과
+              토큰 입력 661 / 출력 평균 ~480 → 호출당 약 $0.003
+gpt-5.6-luna: 9/10 정답 · timeout 0회 · 지연 중앙값 2.2s / 최대 5.4s
+              토큰 입력 907 / 출력 평균 ~200 → 호출당 약 $0.0004 (약 1/7 비용)
+공통 오답: 강아지 그림 (gpt-5→곰, luna→개구리; luna 재실행 시 원숭이 — 비결정적)
+```
+
+결론: 행사 조건(11.5s 상한)에서는 gpt-5.6-luna가 정확도·지연·비용 모두 우세. `.env`에 `DRAW_DUEL_AI_MODEL=gpt-5.6-luna` 권장.
+
+주의: `pnpm ai:bench`는 현재 fixture 이미지가 `draw-duel-template-guesser`의 인덱스와 정확히 일치해 provider를 호출하지 않고 100%가 나온다(응답 0ms). 실제 모델 성능 측정용으로는 template 우회가 필요하다.
+
 ## 10. Real or AI Final UX 운영 체크
 
 권장 설정:
