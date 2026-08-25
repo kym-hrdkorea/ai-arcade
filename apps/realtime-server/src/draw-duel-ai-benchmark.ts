@@ -565,6 +565,7 @@ export async function runDrawDuelAIBenchmark() {
     reasoningEffort,
     retryLimit,
     timeoutMs,
+    useLocalTemplateGuesses: false,
   });
   const sampleLimit = parseOptionalNumber(process.env.DRAW_DUEL_AI_BENCHMARK_SAMPLE_LIMIT);
   const fixtures =

@@ -34,6 +34,10 @@ export type OpenAIVisionAIGuesserOptions = {
   reasoningEffort?: OpenAIReasoningEffort;
   retryLimit?: number;
   timeoutMs?: number;
+  // Benchmarks must disable this: the template index is built from the
+  // benchmark fixtures themselves, so template hits would score the answer
+  // sheet instead of the provider.
+  useLocalTemplateGuesses?: boolean;
 };
 
 type OpenAIContentPart =
@@ -508,6 +512,7 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
   private readonly reasoningEffort: OpenAIReasoningEffort | undefined;
   private readonly retryLimit: number;
   private readonly timeoutMs: number;
+  private readonly useLocalTemplateGuesses: boolean;
 
   constructor(options: OpenAIVisionAIGuesserOptions) {
     this.apiKey = options.apiKey;
@@ -518,19 +523,22 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
     this.reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
     this.retryLimit = normalizeRetryLimit(options.retryLimit);
     this.timeoutMs = normalizeTimeoutMs(options.timeoutMs);
+    this.useLocalTemplateGuesses = options.useLocalTemplateGuesses ?? true;
   }
 
   async guess(
     input: AIGuesserInput,
     scoringContext: AIGuesserScoringContext,
   ): Promise<AIGuesserOutput> {
-    const templateOutput = await guessDrawDuelTemplate(input);
+    if (this.useLocalTemplateGuesses) {
+      const templateOutput = await guessDrawDuelTemplate(input);
 
-    if (templateOutput) {
-      this.logger.info(
-        `[ai] local template guess completed room=${input.roomCode} round=${input.roundId} frames=${input.strokeSequence.length} topCandidate="${templateOutput.text}"`,
-      );
-      return templateOutput;
+      if (templateOutput) {
+        this.logger.info(
+          `[ai] local template guess completed room=${input.roomCode} round=${input.roundId} frames=${input.strokeSequence.length} topCandidate="${templateOutput.text}"`,
+        );
+        return templateOutput;
+      }
     }
 
     const maxAttempts = this.retryLimit + 1;

@@ -308,3 +308,65 @@ describe("OpenAIVisionAIGuesser", () => {
     expect(calls).toBe(1);
   });
 });
+
+describe("OpenAIVisionAIGuesser template guard", () => {
+  async function fixtureInput(): Promise<AIGuesserInput> {
+    const { drawDuelAIBenchmarkFixtures } = await import(
+      "./draw-duel-ai-benchmark-fixtures.js"
+    );
+    const { renderDrawDuelNormalizedSnapshot, renderDrawDuelSnapshot } = await import(
+      "./draw-duel-snapshot-renderer.js"
+    );
+    const fixture = drawDuelAIBenchmarkFixtures[0];
+
+    if (!fixture) {
+      throw new Error("benchmark fixtures are empty");
+    }
+
+    return {
+      finalImage: await renderDrawDuelSnapshot(fixture.strokes),
+      normalizedFinalImage: await renderDrawDuelNormalizedSnapshot(fixture.strokes),
+      roomCode: "TPL001",
+      roundId: "template-1",
+      strokeSequence: [],
+    };
+  }
+
+  it("answers benchmark-fixture drawings from the local template without calling the provider", async () => {
+    let calls = 0;
+    const guesser = new OpenAIVisionAIGuesser({
+      apiKey: "test-key",
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(candidateResponse("cat"), { status: 200 });
+      },
+      logger: quietLogger,
+    });
+
+    const result = await guesser.guess(await fixtureInput(), scoringContext);
+
+    expect(calls).toBe(0);
+    expect(result.text.length).toBeGreaterThan(0);
+  });
+
+  it("skips the local template and calls the provider when useLocalTemplateGuesses is false", async () => {
+    let calls = 0;
+    const guesser = new OpenAIVisionAIGuesser({
+      apiKey: "test-key",
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(candidateResponse("cat", 0.9), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+      logger: quietLogger,
+      useLocalTemplateGuesses: false,
+    });
+
+    const result = await guesser.guess(await fixtureInput(), scoringContext);
+
+    expect(calls).toBe(1);
+    expect(result.text).toBe("cat");
+  });
+});
