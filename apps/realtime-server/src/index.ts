@@ -111,6 +111,7 @@ const httpServer = createServer((request, response) => {
       JSON.stringify({
         ok: true,
         service: "ai-arcade-realtime-server",
+        commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "unknown",
         rooms: roomManager.getRoomCount(),
         realOrAiPlayableRoundCount: realOrAiRoomManager.getPlayableRoundCount(),
         realOrAiRooms: realOrAiRoomManager.getRoomCount(),
