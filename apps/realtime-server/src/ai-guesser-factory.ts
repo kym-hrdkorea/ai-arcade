@@ -35,19 +35,23 @@ function parseBreakerInt(value: string | undefined): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-function parseDetail(value: string | undefined): OpenAIImageDetail | undefined {
-  if (value === "auto" || value === "high" || value === "low") {
-    return value;
+export function parseDetail(value: string | undefined): OpenAIImageDetail | undefined {
+  const normalized = value?.trim().toLowerCase();
+
+  if (normalized === "auto" || normalized === "high" || normalized === "low") {
+    return normalized;
   }
 
   return undefined;
 }
 
-function parseReasoningEffort(
+export function parseReasoningEffort(
   value: string | undefined,
 ): OpenAIReasoningEffort | undefined {
-  if (value === "low" || value === "medium" || value === "high") {
-    return value;
+  const normalized = value?.trim().toLowerCase();
+
+  if (normalized === "low" || normalized === "medium" || normalized === "high") {
+    return normalized;
   }
 
   return undefined;
