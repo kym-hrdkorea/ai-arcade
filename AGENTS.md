@@ -205,7 +205,7 @@ Draw Duel의 다음 핵심 Phase는 새 게임 추가보다 실제 그림 기반
 - `MockAIGuesser`는 기본값과 테스트 fallback으로 유지한다.
 - 실제 AI provider 호출은 `apps/realtime-server` 내부에서만 수행하고, API 키는 서버 환경변수에만 둔다.
 - 클라이언트는 AI API를 직접 호출하지 않으며, `draw-duel:ai-guess` 같은 서버 이벤트 결과만 수신한다.
-- 외부 AI provider에는 정답 단어 또는 aliases를 직접 전달하지 않는다. 정답 판정과 점수 계산은 서버 내부에서만 수행한다.
+- 외부 AI provider에는 정답을 특정할 수 있는 정보를 전달하지 않는다: 정답 단어를 단독으로 강조하거나 aliases를 보내는 것은 금지. 단, 정답이 숨어 있는 전체 word bank 목록을 고정 순서로 전달하는 것(객관식)은 허용한다 (2026-08-23 개정 — 자유 서술 대비 정답률 91.9%→97.3%). 정답 판정과 점수 계산은 서버 내부에서만 수행한다.
 - AI 입력 이미지는 라운드 중 AI 추측 시점에만 생성한다. 매 stroke마다 전체 이미지나 base64 snapshot을 전송하지 않는다.
 - snapshot은 가능한 한 서버가 stroke history로 재구성하고, 클라이언트 snapshot을 받는 경우 room, round, drawer, 크기, mime type을 서버에서 검증한다.
 - AI 호출은 라운드당 1회로 제한하고 timeout, retry 제한, fallback, 오류 메시지를 명시한다.

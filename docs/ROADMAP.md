@@ -199,7 +199,7 @@ Phase 7 진입 조건:
 완료 기준:
 
 - [x] 실제 AI provider를 켜도 API 키가 클라이언트 번들에 노출되지 않음
-- [x] 외부 AI prompt 또는 request payload에 정답 단어가 직접 포함되지 않음
+- [x] 외부 AI prompt 또는 request payload에 정답을 특정할 수 있는 정보(정답 단독 강조, aliases)가 포함되지 않음 — 전체 word bank 목록 전달(객관식)은 2026-08-23 AGENTS 5-1 개정으로 허용
 - [x] AI 추측이 실제 그림 snapshot을 기반으로 1라운드 1회 수행됨
 - [x] provider 장애·timeout 시 라운드, 점수판, 최종 결과, 스킵, 리셋, 재접속이 유지됨
 - [x] Mock provider 기준 `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm e2e` 통과

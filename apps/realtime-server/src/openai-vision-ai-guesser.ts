@@ -445,7 +445,16 @@ function createPromptContent(
   input: AIGuesserInput,
   detail: OpenAIImageDetail,
   category?: string,
+  wordBank?: string[],
 ): OpenAIContentPart[] {
+  // The full word bank (answer hidden among all entries, fixed order, no
+  // aliases) may be shared with the provider; the answer itself must not be
+  // singled out in any way. See AGENTS.md 5-1.
+  const wordBankText =
+    wordBank && wordBank.length > 0
+      ? `The answer is exactly one word from this fixed word bank: ${wordBank.join(", ")}. ` +
+        "Every candidate you return must be copied verbatim from that word bank. "
+      : "You are not given that word bank, so choose the closest ordinary drawable noun instead of inventing a rare or overly specific term. ";
   const content: OpenAIContentPart[] = [
     {
       type: "input_text",
@@ -455,7 +464,7 @@ function createPromptContent(
         "Infer the intended object from the accumulating shape, not from written labels, decorative text, color tricks, arrows, or late distractor marks. " +
         "The hidden answer comes from a fixed, child-safe word bank of everyday drawable objects, animals, foods, places, nature items, sports items, body parts, or symbols. " +
         (category ? `The answer's broad category is ${category}. ` : "") +
-        "You are not given that word bank, so choose the closest ordinary drawable noun instead of inventing a rare or overly specific term. " +
+        wordBankText +
         "Favor concrete Korean common nouns.",
     },
   ];
@@ -573,7 +582,12 @@ export class OpenAIVisionAIGuesser implements AIGuesser {
           input: [
             {
               role: "user",
-              content: createPromptContent(input, this.detail, scoringContext.category),
+              content: createPromptContent(
+                input,
+                this.detail,
+                scoringContext.category,
+                scoringContext.candidateWords,
+              ),
             },
           ],
           max_output_tokens: 768,

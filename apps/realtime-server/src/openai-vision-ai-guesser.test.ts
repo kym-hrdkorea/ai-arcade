@@ -156,9 +156,10 @@ describe("OpenAIVisionAIGuesser", () => {
     expect(body.text?.format?.name).toBe("draw_duel_ai_candidates");
     expect(body.text?.format?.schema?.required).toEqual(["candidates"]);
     expect(body.text?.format?.schema?.properties).not.toHaveProperty("commentarySteps");
-    expect(bodyText).not.toContain(scoringContext.correctWord);
-    expect(bodyText).not.toContain(scoringContext.aliases[0] ?? "");
-    expect(bodyText).not.toContain(scoringContext.candidateWords[1] ?? "");
+    // 개정된 규칙(AGENTS.md 5-1): 전체 word bank는 전달하되, 정답이 단독으로
+    // 드러나면 안 되고 aliases는 여전히 보내지 않는다.
+    expect(bodyText).toContain(scoringContext.candidateWords[1] ?? "");
+    expect((bodyText.match(/apple/g) ?? []).length).toBe(1);
     expect(result.text).toBe("cat");
     expect(result.confidence).toBe(0.82);
     expect(result.candidates).toHaveLength(2);
@@ -368,5 +369,33 @@ describe("OpenAIVisionAIGuesser template guard", () => {
 
     expect(calls).toBe(1);
     expect(result.text).toBe("cat");
+  });
+});
+
+describe("OpenAIVisionAIGuesser payload policy", () => {
+  it("keeps aliases out of the provider payload even with the word bank attached", async () => {
+    const requestBodies: string[] = [];
+    const guesser = new OpenAIVisionAIGuesser({
+      apiKey: "test-key",
+      fetchImpl: async (_url, init) => {
+        requestBodies.push(init.body);
+        return new Response(candidateResponse("cat"), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+      logger: quietLogger,
+      useLocalTemplateGuesses: false,
+    });
+
+    await guesser.guess(input, {
+      aliases: ["uniq-alias-marker"],
+      candidateWords: ["apple", "airplane", "pizza"],
+      correctWord: "apple",
+    });
+
+    const bodyText = requestBodies[0] ?? "";
+    expect(bodyText).toContain("airplane");
+    expect(bodyText).not.toContain("uniq-alias-marker");
   });
 });

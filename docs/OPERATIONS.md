@@ -449,6 +449,18 @@ gpt-5.6-luna: 9/10 정답 · timeout 0회 · 지연 중앙값 2.2s / 최대 5.4s
 결론: 행사 조건(11.5s 상한)에서는 gpt-5.6-luna가 정확도·지연·비용 모두 우세. `.env`에 `DRAW_DUEL_AI_MODEL=gpt-5.6-luna` 권장.
 
 주의: `pnpm ai:bench`는 현재 fixture 이미지가 `draw-duel-template-guesser`의 인덱스와 정확히 일치해 provider를 호출하지 않고 100%가 나온다(응답 0ms). 실제 모델 성능 측정용으로는 template 우회가 필요하다.
+(2026-08-23 수정됨: 벤치마크가 `useLocalTemplateGuesses: false`로 실호출한다.)
+
+### 2026-08-23 객관식 프롬프트 도입 (word bank 목록 전달)
+
+실플레이에서 AI 정답률이 낮다는 피드백에 따라, 전체 word bank(202단어, 고정 순서)를 프롬프트에 포함해
+모델이 목록 안에서만 고르게 변경했다. 정답 단독 강조와 aliases 전달은 여전히 금지(AGENTS 5-1 개정판).
+
+```txt
+gpt-5.6-luna, 38 fixtures 실호출 (detail=low, reasoning=low):
+자유 서술: Top-1 91.9% (34/37) · unknown 5.4% · p50 2.5s
+객관식:   Top-1 97.3% (36/37) · unknown 0%   · p50 2.2s
+```
 
 ## 10. Real or AI Final UX 운영 체크
 
