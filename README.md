@@ -16,7 +16,7 @@ Phase 7(실제 AI 그림 추측) 구현이 완료된 공개 베타 안정화 단
 - Draw Duel 로비: 방 생성, 방 코드 참가, 참가자 목록, 호스트 권한 표시
 - Draw Duel 캔버스: 호스트 드로잉, 게스트 관전, stroke history 복원, 전체 지우기 동기화
 - Draw Duel 게임 진행: 라운드, 출제자 순환, 제시어, 타이머, 정답 판정, 점수판, 라운드/최종 결과
-- Draw Duel AI 추측: 서버 내부 `AIGuesser` 경계, 라운드당 1회 추측, AI 점수판/최종 결과 표시. 기본 mock, `DRAW_DUEL_AI_PROVIDER=openai`로 실제 그림 snapshot 기반 OpenAI vision 추측 지원 (timeout·retry·mock fallback 포함)
+- Draw Duel AI 추측: 서버 내부 `AIGuesser` 경계, 라운드당 1회 추측, AI 점수판/최종 결과 표시. 기본 mock, `DRAW_DUEL_AI_PROVIDER=openai`로 실제 그림 snapshot 기반 OpenAI vision 추측 지원 (timeout·retry·circuit breaker·mock fallback 포함)
 - Real or AI: 실제 사진 vs AI 생성 사진 판별 게임 — 로비, 설정, 라운드 진행, 점수, 모바일 우선 판별 화면 (`games/real-or-ai`)
 - Draw Duel 운영 안정화: QR 입장, 호스트 전용 라운드 스킵/방 리셋, 같은 브라우저 재접속 복구, 끊김 상태 표시
 - Draw Duel 파일럿 준비: 호스트 전용 QR 운영 패널, 시작 전 게임 설정, Playwright E2E 시나리오

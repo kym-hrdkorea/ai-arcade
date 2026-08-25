@@ -376,6 +376,7 @@ pnpm --filter realtime-server exec tsx src/load-smoke.ts --game=real-or-ai --cli
 [ ] 외부 AI request에 정답 단어 또는 aliases가 직접 포함되지 않는지 확인
 [ ] AI 호출이 라운드당 1회로 제한되는지 확인
 [ ] timeout 또는 provider 장애 시 게임 진행이 유지되는지 확인
+[ ] 연속 장애 시 circuit breaker가 열려 provider 호출을 건너뛰는지 확인 (기본: 연속 3회 실패 → 60초 차단 후 1회 재시도)
 [ ] 원본 그림 이미지 저장 여부와 보관 정책을 사전에 승인받았는지 확인
 [ ] provider 비용과 latency를 리허설 기록에 남겼는지 확인
 ```

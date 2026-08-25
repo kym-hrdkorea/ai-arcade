@@ -189,7 +189,7 @@ Phase 7 진입 조건:
 - [x] `VisionAIGuesser` 추가
 - [x] Mock provider를 기본값과 테스트 fallback으로 유지
 - [x] AI 호출 timeout, retry, 라운드당 1회 호출 제한 구현
-- [ ] AI 호출 circuit breaker 구현
+- [x] AI 호출 circuit breaker 구현
 - [x] 이미지 크기, mime type, base64 길이, room/round 권한 검증 추가
 - [x] AI 오류 시 게임 흐름이 멈추지 않도록 짧은 실패 메시지와 no-score 처리 적용
 - [x] AI 추측 결과, confidence, provider, latency를 서버 로그에 기록하되 원본 이미지는 승인 없이 저장하지 않음
@@ -208,6 +208,7 @@ Phase 7 진입 조건:
 검증 기록:
 
 - 2026-08-23 로컬(Windows 10) 재검증: lint/typecheck/test/build/e2e 전부 통과. realtime-server 단위 테스트 95개 통과, `openai-vision-ai-guesser`, `ai-guesser-factory`, `draw-duel-snapshot-renderer`, `draw-duel-ai-postprocessor`, `draw-duel-ai-benchmark` 테스트 포함.
+- 2026-08-23 circuit breaker 추가: `circuit-breaker-ai-guesser.ts`가 openai provider를 감싸 연속 실패 시 호출을 차단하고 쿨다운 후 1회 재시도한다. `DRAW_DUEL_AI_BREAKER_THRESHOLD`, `DRAW_DUEL_AI_BREAKER_COOLDOWN_MS`로 조정.
 - 체크 표시는 mock/fake-vision provider 기준 구현·테스트 검증이다. 실제 OpenAI provider 리허설(비용·지연 기록)은 미완으로 남긴다.
 
 제외:
