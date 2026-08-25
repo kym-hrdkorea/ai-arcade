@@ -182,27 +182,33 @@ Phase 7 진입 조건:
 
 작업:
 
-- [ ] AI provider 선택 기준과 서버 환경변수 계약 정의
-- [ ] `AIGuesser` 입력을 provider-safe 구조로 분리해 외부 AI가 정답 단어를 직접 받지 않도록 변경
-- [ ] 라운드 중 AI 추측 시점에만 캔버스 snapshot을 생성하는 파이프라인 추가
-- [ ] stroke history에서 서버가 재구성한 이미지 또는 검증된 클라이언트 snapshot만 AI 입력으로 사용
-- [ ] `VisionAIGuesser` 추가
-- [ ] Mock provider를 기본값과 테스트 fallback으로 유지
-- [ ] AI 호출 timeout, retry, circuit breaker, 라운드당 1회 호출 제한 구현
-- [ ] 이미지 크기, mime type, base64 길이, room/round 권한 검증 추가
-- [ ] AI 오류 시 게임 흐름이 멈추지 않도록 짧은 실패 메시지와 no-score 처리 적용
-- [ ] AI 추측 결과, confidence, provider, latency를 서버 로그에 기록하되 원본 이미지는 승인 없이 저장하지 않음
-- [ ] `.env.example`, `docs/OPERATIONS.md`, `games/draw-duel/GAME_SPEC.md`에 실제 AI 운영 절차 문서화
-- [ ] 단위 테스트, fake vision adapter 테스트, E2E 회귀 테스트 추가
+- [x] AI provider 선택 기준과 서버 환경변수 계약 정의
+- [x] `AIGuesser` 입력을 provider-safe 구조로 분리해 외부 AI가 정답 단어를 직접 받지 않도록 변경
+- [x] 라운드 중 AI 추측 시점에만 캔버스 snapshot을 생성하는 파이프라인 추가
+- [x] stroke history에서 서버가 재구성한 이미지 또는 검증된 클라이언트 snapshot만 AI 입력으로 사용
+- [x] `VisionAIGuesser` 추가
+- [x] Mock provider를 기본값과 테스트 fallback으로 유지
+- [x] AI 호출 timeout, retry, 라운드당 1회 호출 제한 구현
+- [ ] AI 호출 circuit breaker 구현
+- [x] 이미지 크기, mime type, base64 길이, room/round 권한 검증 추가
+- [x] AI 오류 시 게임 흐름이 멈추지 않도록 짧은 실패 메시지와 no-score 처리 적용
+- [x] AI 추측 결과, confidence, provider, latency를 서버 로그에 기록하되 원본 이미지는 승인 없이 저장하지 않음
+- [x] `.env.example`, `docs/OPERATIONS.md`, `games/draw-duel/GAME_SPEC.md`에 실제 AI 운영 절차 문서화
+- [x] 단위 테스트, fake vision adapter 테스트, E2E 회귀 테스트 추가
 
 완료 기준:
 
-- [ ] 실제 AI provider를 켜도 API 키가 클라이언트 번들에 노출되지 않음
-- [ ] 외부 AI prompt 또는 request payload에 정답 단어가 직접 포함되지 않음
-- [ ] AI 추측이 실제 그림 snapshot을 기반으로 1라운드 1회 수행됨
-- [ ] provider 장애·timeout 시 라운드, 점수판, 최종 결과, 스킵, 리셋, 재접속이 유지됨
-- [ ] Mock provider 기준 `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm e2e` 통과
+- [x] 실제 AI provider를 켜도 API 키가 클라이언트 번들에 노출되지 않음
+- [x] 외부 AI prompt 또는 request payload에 정답 단어가 직접 포함되지 않음
+- [x] AI 추측이 실제 그림 snapshot을 기반으로 1라운드 1회 수행됨
+- [x] provider 장애·timeout 시 라운드, 점수판, 최종 결과, 스킵, 리셋, 재접속이 유지됨
+- [x] Mock provider 기준 `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm e2e` 통과
 - [ ] 실제 provider 수동 리허설에서 지연, 비용, 오류 로그가 `docs/OPERATIONS.md`에 기록됨
+
+검증 기록:
+
+- 2026-08-23 로컬(Windows 10) 재검증: lint/typecheck/test/build/e2e 전부 통과. realtime-server 단위 테스트 95개 통과, `openai-vision-ai-guesser`, `ai-guesser-factory`, `draw-duel-snapshot-renderer`, `draw-duel-ai-postprocessor`, `draw-duel-ai-benchmark` 테스트 포함.
+- 체크 표시는 mock/fake-vision provider 기준 구현·테스트 검증이다. 실제 OpenAI provider 리허설(비용·지연 기록)은 미완으로 남긴다.
 
 제외:
 
@@ -211,6 +217,19 @@ Phase 7 진입 조건:
 - OAuth/관리자 계정
 - 운영자 대시보드
 - 새 게임 추가
+
+## Phase 7.5. Real or AI 게임 추가 (완료)
+
+목표: 실제 사진과 AI 생성 사진을 구분하는 두 번째 게임을 기존 허브·운영 규칙 안에 추가한다.
+
+상세 계획과 단계별 기준은 `games/real-or-ai/PHASE_PLAN.md`를 따른다.
+
+- [x] 게임 registry 등록과 허브 카드 노출 (`packages/shared/src/game-registry/real-or-ai.ts`)
+- [x] 공유 타입·검증 schema (`packages/shared/src/types/real-or-ai.ts`)
+- [x] Realtime room manager와 Socket.IO handler (`apps/realtime-server/src/real-or-ai-*.ts`)
+- [x] 웹 로비·설정·플레이 화면 (`apps/web/app/games/real-or-ai`)
+- [x] E2E 시나리오와 부하 스모크 스크립트 (120 clients/1 room)
+- [ ] 실제 행사 파일럿 기록
 
 ## Phase 8. 게임 확장 아이디어 정리
 
