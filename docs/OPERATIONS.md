@@ -131,6 +131,11 @@ ngrok 한계:
 
 ### 0-3. 안정 배포 권장안
 
+> 2026-08-23 배포 완료: web `https://ai-arcade-six.vercel.app` (Vercel, rootDirectory=apps/web),
+> realtime `https://ai-arcade-realtime.onrender.com` (Render Blueprint `render.yaml`, free plan — 15분 유휴 시 슬립).
+> 배포 검증: Vercel origin 소켓 연결(CORS), 방 생성, 모바일 참가, 드로잉 동기화, 실제 openai(gpt-5.6-luna) 추측 3.4s 응답 확인.
+> 행사 전 Render 유료 플랜 전환 또는 사전 웜업 필요.
+
 권장 구성:
 
 ```txt

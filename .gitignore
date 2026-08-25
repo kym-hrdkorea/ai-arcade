@@ -12,3 +12,6 @@ pnpm-debug.log*
 /real_images/
 /ai_images/
 /tmp/
+
+.vercel
+.env*
