@@ -451,6 +451,18 @@ gpt-5.6-luna: 9/10 정답 · timeout 0회 · 지연 중앙값 2.2s / 최대 5.4s
 주의: `pnpm ai:bench`는 현재 fixture 이미지가 `draw-duel-template-guesser`의 인덱스와 정확히 일치해 provider를 호출하지 않고 100%가 나온다(응답 0ms). 실제 모델 성능 측정용으로는 template 우회가 필요하다.
 (2026-08-23 수정됨: 벤치마크가 `useLocalTemplateGuesses: false`로 실호출한다.)
 
+### 6-1-1. "AI가 이상할 때" 3분 진단 절차 (2026-08-26 실전 검증)
+
+1. `https://<realtime-url>/health`의 `commit` 필드가 최신 커밋인지 확인한다 (배포 드리프트 판별).
+2. Render Logs에서 `falling` 검색: `[ai] OPENAI_API_KEY is missing or invalid (...)` 경고가 있으면
+   괄호 안 진단을 읽는다 — `env var is not set`이면 변수 이름 오타부터 의심한다
+   (실사례: `OPEN_API_KEY`로 저장되어 mock으로 폴백).
+3. mock 폴백 판별법: 응답이 항상 약 3초 즉답이고, 정답일 때 신뢰도 72~94%,
+   오답일 때 28~62% 분포이면 mock이다. 실제 provider는 지연이 그림 난이도에 따라 변하고
+   낮은 신뢰도의 정답(예: 6%)도 낸다.
+4. 키 값의 공백·따옴표·보이지 않는 유니코드 문자는 서버가 자동 복구하므로,
+   경고가 계속되면 값이 아니라 변수 이름·서비스 선택을 의심한다.
+
 ### 2026-08-23 객관식 프롬프트 도입 (word bank 목록 전달)
 
 실플레이에서 AI 정답률이 낮다는 피드백에 따라, 전체 word bank(202단어, 고정 순서)를 프롬프트에 포함해
