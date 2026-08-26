@@ -58,10 +58,11 @@ export function parseReasoningEffort(
 }
 
 export function sanitizeOpenAIApiKey(value: string | undefined): string | undefined {
-  // Keys pasted into dashboards routinely pick up wrapping quotes or stray
-  // whitespace (including a line break in the middle of the value). None of
+  // Keys pasted into dashboards routinely pick up wrapping quotes, stray
+  // whitespace (including a line break in the middle of the value), or
+  // invisible Unicode format characters such as zero-width spaces. None of
   // those characters can appear in a real key, so strip them all first.
-  const collapsed = value?.replace(/\s+/g, "");
+  const collapsed = value?.replace(/[\s\p{Cf}]+/gu, "");
 
   if (!collapsed) {
     return undefined;
@@ -70,6 +71,30 @@ export function sanitizeOpenAIApiKey(value: string | undefined): string | undefi
   const unquoted = collapsed.replace(/^["']+/, "").replace(/["']+$/, "");
 
   return /^[\x21-\x7e]+$/.test(unquoted) ? unquoted : undefined;
+}
+
+export function describeInvalidOpenAIApiKey(value: string | undefined): string {
+  // Diagnostic shape only - never include any part of the key itself.
+  if (value === undefined) {
+    return "env var is not set";
+  }
+
+  const compact = value.replace(/[\s\p{Cf}]+/gu, "");
+
+  if (compact.length === 0) {
+    return `value is empty (rawLength=${value.length})`;
+  }
+
+  const nonAscii = [...compact].filter((ch) => !/[\x21-\x7e]/.test(ch));
+  const first = nonAscii[0]?.codePointAt(0);
+
+  return (
+    `rawLength=${value.length}, nonAsciiChars=${nonAscii.length}` +
+    (first !== undefined
+      ? `, firstNonAscii=U+${first.toString(16).toUpperCase().padStart(4, "0")}`
+      : "") +
+    `, startsWithSk=${compact.startsWith("sk-")}`
+  );
 }
 
 export function createAIGuesser(provider = process.env.DRAW_DUEL_AI_PROVIDER ?? "mock"): AIGuesser {
@@ -88,7 +113,7 @@ export function createAIGuesser(provider = process.env.DRAW_DUEL_AI_PROVIDER ?? 
 
     if (!apiKey) {
       console.warn(
-        "[ai] OPENAI_API_KEY is missing or invalid. Paste the raw sk-... value only; falling back to mock.",
+        `[ai] OPENAI_API_KEY is missing or invalid (${describeInvalidOpenAIApiKey(process.env.OPENAI_API_KEY)}). Paste the raw sk-... value only; falling back to mock.`,
       );
       return new MockAIGuesser();
     }
