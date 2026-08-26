@@ -574,7 +574,8 @@ describe("RoomManager", () => {
     );
 
     expect(correct.guess.isCorrect).toBe(true);
-    expect(correct.guess.pointsAwarded).toBe(100);
+    // 45초 라운드에서 10초 시점 정답: 100 × (1 + 0.5 × 35/45) = 139점
+    expect(correct.guess.pointsAwarded).toBe(139);
     expect(hostScore?.score).toBe(0);
     expect(guestScore?.score).toBe(0);
     expect(correct.roundState.round.status).toBe("ai-guessing");
@@ -1649,5 +1650,74 @@ describe("RoomManager", () => {
     if (next.kind === "round") {
       expect(next.roundState.round.drawerPlayerId).toBe(firstGuest.currentPlayerId);
     }
+  });
+});
+
+describe("speed-bonus guess points", () => {
+  async function submitCorrectAt(elapsedMs: number) {
+    const manager = new RoomManager(new FixedAIGuesser({ confidence: 0.2, text: "정답아님" }));
+    const created = createRoom(manager);
+    const guest = joinGuest(manager, created.room.roomCode);
+    const started = manager.startGame(
+      { roomCode: created.room.roomCode },
+      "socket-host",
+      startTime,
+    );
+
+    return manager.submitGuess(
+      createGuess(
+        created.room.roomCode,
+        started.roundState.round.roundId,
+        guest.currentPlayerId,
+        started.word.word,
+      ),
+      "socket-guest",
+      new Date(startTime.getTime() + elapsedMs),
+    );
+  }
+
+  it("awards 150 points for an instant correct answer", async () => {
+    const result = await submitCorrectAt(0);
+
+    expect(result.guess.pointsAwarded).toBe(150);
+    expect(result.guess.responseTimeMs).toBe(0);
+  });
+
+  it("awards the base 100 points at the deadline", async () => {
+    const result = await submitCorrectAt(45_000);
+
+    expect(result.guess.pointsAwarded).toBe(100);
+    expect(result.guess.responseTimeMs).toBe(45_000);
+  });
+
+  it("awards points between the bounds mid-round", async () => {
+    const result = await submitCorrectAt(22_500);
+
+    expect(result.guess.pointsAwarded).toBe(125);
+  });
+
+  it("awards zero points for a wrong answer regardless of speed", async () => {
+    const manager = new RoomManager(new FixedAIGuesser({ confidence: 0.2, text: "정답아님" }));
+    const created = createRoom(manager);
+    const guest = joinGuest(manager, created.room.roomCode);
+    const started = manager.startGame(
+      { roomCode: created.room.roomCode },
+      "socket-host",
+      startTime,
+    );
+
+    const result = await manager.submitGuess(
+      createGuess(
+        created.room.roomCode,
+        started.roundState.round.roundId,
+        guest.currentPlayerId,
+        wrongAnswerFor(started.word.word),
+      ),
+      "socket-guest",
+      startTime,
+    );
+
+    expect(result.guess.pointsAwarded).toBe(0);
+    expect(result.guess.responseTimeMs).toBe(0);
   });
 });

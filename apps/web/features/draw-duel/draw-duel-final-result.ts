@@ -5,11 +5,13 @@ import type {
 } from "@ai-arcade/shared";
 
 export type HumanAnswerRanking = {
+  averageResponseMs?: number;
   correctCount: number;
   isTied: boolean;
   nickname: string;
   playerId: string;
   rank: number;
+  totalPoints: number;
 };
 
 export function getFinalTeamScores(
@@ -37,18 +39,31 @@ export function getFinalWinner(
   return teamScores.ai > teamScores.human ? "AI WIN" : "HUMAN WIN";
 }
 
+type RankingAccumulator = {
+  correctCount: number;
+  correctResponseMsTotal: number;
+  correctResponseMsCount: number;
+  nickname: string;
+  playerId: string;
+  totalPoints: number;
+};
+
 export function getHumanAnswerRankings(
   gameResult: DrawDuelGameResultPayload,
 ): HumanAnswerRanking[] {
-  const rankingMap = new Map<string, Omit<HumanAnswerRanking, "isTied" | "rank">>();
+  const rankingMap = new Map<string, RankingAccumulator>();
+  const emptyEntry = (playerId: string, nickname: string): RankingAccumulator => ({
+    correctCount: 0,
+    correctResponseMsTotal: 0,
+    correctResponseMsCount: 0,
+    nickname,
+    playerId,
+    totalPoints: 0,
+  });
 
   for (const result of gameResult.results) {
     if (result.source === "player") {
-      rankingMap.set(result.playerId, {
-        correctCount: 0,
-        nickname: result.nickname,
-        playerId: result.playerId,
-      });
+      rankingMap.set(result.playerId, emptyEntry(result.playerId, result.nickname));
     }
   }
 
@@ -58,44 +73,60 @@ export function getHumanAnswerRankings(
         continue;
       }
 
-      const current = rankingMap.get(guess.playerId) ?? {
-        correctCount: 0,
-        nickname: guess.nickname,
-        playerId: guess.playerId,
-      };
+      const current =
+        rankingMap.get(guess.playerId) ?? emptyEntry(guess.playerId, guess.nickname);
+      const isCorrect = guess.isCorrect;
+      const hasResponseTime = typeof guess.responseTimeMs === "number";
 
       rankingMap.set(guess.playerId, {
         ...current,
-        correctCount: current.correctCount + (guess.isCorrect ? 1 : 0),
+        correctCount: current.correctCount + (isCorrect ? 1 : 0),
+        correctResponseMsTotal:
+          current.correctResponseMsTotal +
+          (isCorrect && hasResponseTime ? (guess.responseTimeMs ?? 0) : 0),
+        correctResponseMsCount:
+          current.correctResponseMsCount + (isCorrect && hasResponseTime ? 1 : 0),
+        totalPoints: current.totalPoints + guess.pointsAwarded,
       });
     }
   }
 
   const sorted = [...rankingMap.values()].sort((first, second) => {
+    if (second.totalPoints !== first.totalPoints) {
+      return second.totalPoints - first.totalPoints;
+    }
+
     if (second.correctCount !== first.correctCount) {
       return second.correctCount - first.correctCount;
     }
 
     return first.nickname.localeCompare(second.nickname, "ko-KR");
   });
-  let previousCorrectCount: number | undefined;
+  let previousPoints: number | undefined;
   let previousRank = 0;
 
   return sorted.map((entry, index) => {
-    const sameScorePrevious = previousCorrectCount === entry.correctCount;
-    const rank = sameScorePrevious ? previousRank : index + 1;
+    const samePointsPrevious = previousPoints === entry.totalPoints;
+    const rank = samePointsPrevious ? previousRank : index + 1;
     const isTied = sorted.some(
       (candidate, candidateIndex) =>
-        candidateIndex !== index && candidate.correctCount === entry.correctCount,
+        candidateIndex !== index && candidate.totalPoints === entry.totalPoints,
     );
 
-    previousCorrectCount = entry.correctCount;
+    previousPoints = entry.totalPoints;
     previousRank = rank;
 
     return {
-      ...entry,
+      averageResponseMs:
+        entry.correctResponseMsCount > 0
+          ? Math.round(entry.correctResponseMsTotal / entry.correctResponseMsCount)
+          : undefined,
+      correctCount: entry.correctCount,
       isTied,
+      nickname: entry.nickname,
+      playerId: entry.playerId,
       rank,
+      totalPoints: entry.totalPoints,
     };
   });
 }

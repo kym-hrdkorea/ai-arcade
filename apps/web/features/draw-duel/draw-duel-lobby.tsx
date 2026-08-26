@@ -1050,9 +1050,9 @@ export function DrawDuelLobby({
     const teamScores = getFinalTeamScores(gameResult);
     const finalWinner = getFinalWinner(gameResult);
     const rankings = getHumanAnswerRankings(gameResult);
-    const topCorrectCount = rankings[0]?.correctCount ?? 0;
+    const topPoints = rankings[0]?.totalPoints ?? 0;
     const topNicknames = rankings
-      .filter((entry) => entry.correctCount === topCorrectCount && topCorrectCount > 0)
+      .filter((entry) => entry.totalPoints === topPoints && topPoints > 0)
       .map((entry) => entry.nickname);
     const winnerClass =
       finalWinner === "AI WIN"
@@ -1097,9 +1097,9 @@ export function DrawDuelLobby({
               </h3>
             </div>
             <p className="text-sm font-black text-coin-yellow">
-              {topCorrectCount > 0
-                ? `최다 정답 ${topNicknames.join(", ")} · ${topCorrectCount}개`
-                : "최다 정답 없음"}
+              {topPoints > 0
+                ? `최고 득점 ${topNicknames.join(", ")} · ${topPoints}점`
+                : "최고 득점 없음"}
             </p>
           </div>
 
@@ -1112,14 +1112,22 @@ export function DrawDuelLobby({
                 >
                   <span className="flex flex-wrap items-center gap-3">
                     <span className="arcade-badge arcade-badge-yellow">
-                      {entry.correctCount > 0
+                      {entry.totalPoints > 0
                         ? `${entry.isTied ? "공동 " : ""}${entry.rank}위`
                         : "정답 없음"}
                     </span>
                     <strong className="text-lg text-screen-white">{entry.nickname}</strong>
                   </span>
-                  <span className="font-arcade text-xl text-coin-yellow">
-                    {entry.correctCount}개
+                  <span className="grid justify-items-end gap-1">
+                    <span className="font-arcade text-xl text-coin-yellow">
+                      {entry.totalPoints}점
+                    </span>
+                    <span className="text-xs font-bold text-muted-gray">
+                      정답 {entry.correctCount}개
+                      {typeof entry.averageResponseMs === "number"
+                        ? ` · 평균 ${(entry.averageResponseMs / 1000).toFixed(1)}초`
+                        : ""}
+                    </span>
                   </span>
                 </li>
               ))}

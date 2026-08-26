@@ -167,3 +167,59 @@ describe("Draw Duel final result helpers", () => {
     ).toBe("AI WIN");
   });
 });
+
+describe("speed-bonus point rankings", () => {
+  it("ranks equal correct counts by total points and averages response time", () => {
+    const fast = {
+      ...createGuess(players[0]!, true),
+      pointsAwarded: 148,
+      responseTimeMs: 2_000,
+    };
+    const slow = {
+      ...createGuess(players[1]!, true),
+      pointsAwarded: 105,
+      responseTimeMs: 40_000,
+    };
+    const gameResult = createGameResult([
+      createRound(1, [fast, slow, createGuess(players[2]!, false)]),
+    ]);
+
+    const rankings = getHumanAnswerRankings(gameResult);
+
+    expect(rankings[0]).toMatchObject({
+      averageResponseMs: 2_000,
+      nickname: "민수",
+      rank: 1,
+      totalPoints: 148,
+    });
+    expect(rankings[1]).toMatchObject({ nickname: "지아", rank: 2, totalPoints: 105 });
+    expect(rankings[0]?.correctCount).toBe(rankings[1]?.correctCount);
+    expect(rankings[2]).toMatchObject({ totalPoints: 0 });
+    expect(rankings[2]?.averageResponseMs).toBeUndefined();
+  });
+
+  it("sums points across rounds and averages only correct-answer response times", () => {
+    const roundOne = createRound(1, [
+      { ...createGuess(players[0]!, true), pointsAwarded: 150, responseTimeMs: 1_000 },
+      { ...createGuess(players[1]!, false), responseTimeMs: 3_000 },
+    ]);
+    const roundTwo = createRound(2, [
+      { ...createGuess(players[0]!, true), pointsAwarded: 100, responseTimeMs: 45_000 },
+      { ...createGuess(players[1]!, true), pointsAwarded: 120, responseTimeMs: 20_000 },
+    ]);
+
+    const rankings = getHumanAnswerRankings(createGameResult([roundOne, roundTwo]));
+
+    expect(rankings[0]).toMatchObject({
+      averageResponseMs: 23_000,
+      correctCount: 2,
+      nickname: "민수",
+      totalPoints: 250,
+    });
+    expect(rankings[1]).toMatchObject({
+      averageResponseMs: 20_000,
+      correctCount: 1,
+      totalPoints: 120,
+    });
+  });
+});
