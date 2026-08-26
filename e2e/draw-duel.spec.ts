@@ -159,7 +159,10 @@ test.describe("Draw Duel pilot readiness", () => {
       await expect(finalResult).toContainText(/AI WIN|HUMAN WIN|DRAW/);
       await expect(finalResult).toContainText("정답 랭킹");
       await expect(finalResult).toContainText("guest-pilot");
-      await expect(finalResult).toContainText("1개");
+      await expect(finalResult).toContainText("정답 1개");
+      // 속도 보너스: 정답 1개는 라운드 잔여 시간에 따라 100~150점으로 환산된다.
+      await expect(finalResult).toContainText(/1[0-5]\d점/);
+      await expect(finalResult).toContainText(/평균 \d+\.\d초/);
       await expect(room.hostPage.locator("body")).not.toContainText("실시간 드로잉");
       await expect(room.hostPage.locator("body")).not.toContainText("AI가 정답을 추측하고 있습니다");
       await expect(room.hostPage.locator("body")).not.toContainText("라운드");

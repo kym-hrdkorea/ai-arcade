@@ -74,6 +74,24 @@ const roomCodeAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const roomCodeLength = 6;
 const drawingHistoryLimit = 500;
 const correctGuessPoints = 100;
+// Faster correct answers earn up to 1.5x, mirroring Real or AI scoring so the
+// two games share one speed-bonus philosophy. Capped low on purpose: a few
+// seconds of phone/network lag must not decide the ranking on its own.
+const maxSpeedBonusMultiplier = 1.5;
+
+function calculateHumanGuessPoints(
+  startedAt: string,
+  endsAt: string,
+  now: Date,
+): number {
+  const startedAtMs = Date.parse(startedAt);
+  const endsAtMs = Date.parse(endsAt);
+  const durationMs = Math.max(1, endsAtMs - startedAtMs);
+  const remainingMs = Math.min(durationMs, Math.max(0, endsAtMs - now.getTime()));
+  const remainingRatio = remainingMs / durationMs;
+
+  return Math.round(correctGuessPoints * (1 + (maxSpeedBonusMultiplier - 1) * remainingRatio));
+}
 const mockAIPlayerId = "ai:mock";
 const mockAINickname = "AI Guesser";
 const missingGuessText = "미제출";
@@ -579,7 +597,10 @@ export class RoomManager {
     }
 
     const isCorrect = this.isCorrectGuess(parsed.data.text, round);
-    const pointsAwarded = isCorrect ? correctGuessPoints : 0;
+    const pointsAwarded = isCorrect
+      ? calculateHumanGuessPoints(round.startedAt, round.endsAt, now)
+      : 0;
+    const responseTimeMs = Math.max(0, now.getTime() - Date.parse(round.startedAt));
 
     if (isCorrect) {
       round.correctPlayerIds.add(player.playerId);
@@ -595,6 +616,7 @@ export class RoomManager {
       text: parsed.data.text.trim(),
       isCorrect,
       pointsAwarded,
+      responseTimeMs,
       submittedAt: now.toISOString(),
     };
 

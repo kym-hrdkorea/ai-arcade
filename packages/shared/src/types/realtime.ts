@@ -168,6 +168,8 @@ export type DrawDuelGuessLogPayload = {
   isCorrect: boolean;
   pointsAwarded: number;
   confidence?: number;
+  // Server-measured time from round start to submission. Human guesses only.
+  responseTimeMs?: number;
   submittedAt: string;
 };
 
